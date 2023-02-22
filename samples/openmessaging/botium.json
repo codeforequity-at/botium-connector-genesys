@@ -1,0 +1,21 @@
+{
+  "botium": {
+    "Capabilities": {
+      "PROJECTNAME": "Botium Project Genesys",
+      "CONTAINERMODE": "genesys",
+      "GENESYS_MESSAGING_CHANNEL": "OPEN_MESSAGING",
+      "GENESYS_AWS_REGION": "us-east-1",
+      "GENESYS_CLIENT_ID": "5305cdc8-5ef9-49b9-8cbe-95e87bd3c42d",
+      "GENESYS_CLIENT_SECRET": "vL9kEoHLCb6AWmby5xpHrbAKviL-Lzu6WCiBUZTtmAU",
+      "GENESYS_OPEN_MESSAGING_INTEGRATION_ID": "1387d005-b09a-4788-bf53-16c378cdc1bb",
+      "GENESYS_USER_DATA": {
+        "nickname": "Messaging User",
+        "id": "messaging-user02@externalservice.com",
+        "idType": "email",
+        "firstName": "Messaging",
+        "lastName": "User"
+      },
+      "SIMPLEREST_INBOUND_REDISURL": "redis://127.0.0.1:6379"
+    }
+  }
+}
