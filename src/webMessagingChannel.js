@@ -123,45 +123,6 @@ const Start = async (connector) => {
 }
 
 const UserSays = async (connector, msg) => {
-  const getAttachmentId = async (media) => {
-    return new Promise((resolve, reject) => {
-      const onAttachmentData = {
-        action: 'onAttachment',
-        fileName: path.basename(media.mediaUri),
-        fileType: media.mimeType,
-        fileSize: media.buffer.length,
-        token: connector.view.botium.conversationId
-      }
-      connector.ws.send(JSON.stringify(onAttachmentData))
-
-      connector.ws.on('message', async (data) => {
-        const messageData = JSON.parse(data)
-        console.log(`UserSays: ${JSON.stringify(messageData, null, 2)}`)
-        if (messageData.type === 'message' && messageData.class === 'UploadSuccessEvent' && messageData.code === 200) {
-          resolve(messageData.body)
-        }
-
-        if (messageData.type === 'response' && messageData.class === 'GenerateUrlError' && messageData.code >= 400) {
-          reject(messageData.body)
-        }
-
-        if (messageData.type === 'message' && messageData.class === 'UploadFailureEvent' && messageData.code >= 400) {
-          reject(messageData.body)
-        }
-
-        if (messageData.type === 'response' && messageData.class === 'PresignedUrlResponse' && messageData.code === 200) {
-          const requestOptions = {
-            method: 'put',
-            url: messageData.body.url,
-            headers: Object.assign({}, messageData.body.headers, { 'Content-Type': 'text/plain' }),
-            data: media.buffer
-          }
-          await axios(requestOptions)
-        }
-      })
-    })
-  }
-
   const messageData = {
     action: 'onMessage',
     token: connector.view.botium.conversationId
@@ -184,7 +145,7 @@ const UserSays = async (connector, msg) => {
   } else if (msg.media && msg.media.length > 0) {
     const content = []
     for (const media of msg.media) {
-      const attachmentRes = await getAttachmentId(media)
+      const attachmentRes = await _getAttachmentId(connector, media)
       content.push({
         contentType: 'Attachment',
         attachment: {
@@ -210,6 +171,53 @@ const Stop = async (connector) => {
 }
 
 const Clean = async (connector) => {
+}
+
+const _getAttachmentId = async (connector, media) => {
+  return new Promise((resolve, reject) => {
+    // getAttachmentId function steps in order:
+    // 1. onAttachment
+    // 2. listen on message where class is GenerateUrlError (reject) or PresignedUrlResponse
+    // 3. Upload filedata with axios request
+    // 4. Listen on message where class is UploadFailureEvent (reject) or UploadSuccessEvent (resolve)
+    const onAttachmentData = {
+      action: 'onAttachment',
+      fileName: path.basename(media.mediaUri),
+      fileType: media.mimeType,
+      fileSize: media.buffer.length,
+      token: connector.view.botium.conversationId
+    }
+    connector.ws.send(JSON.stringify(onAttachmentData))
+
+    connector.ws.on('message', async (data) => {
+      const messageData = JSON.parse(data)
+      if (messageData.type === 'message' && messageData.class === 'UploadFailureEvent' && messageData.code >= 400) {
+        reject(messageData.body)
+      }
+
+      if (messageData.type === 'message' && messageData.class === 'UploadSuccessEvent' && messageData.code === 200) {
+        resolve(messageData.body)
+      }
+
+      if (messageData.type === 'response' && messageData.class === 'GenerateUrlError' && messageData.code >= 400) {
+        reject(messageData.body)
+      }
+
+      if (messageData.type === 'response' && messageData.class === 'PresignedUrlResponse' && messageData.code === 200) {
+        try {
+          const requestOptions = {
+            method: 'put',
+            url: messageData.body.url,
+            headers: Object.assign({}, messageData.body.headers, { 'Content-Type': 'text/plain' }),
+            data: media.buffer
+          }
+          await axios(requestOptions)
+        } catch (e) {
+          reject(e)
+        }
+      }
+    })
+  })
 }
 
 module.exports = {
