@@ -1,12 +1,11 @@
 const util = require('util')
-const axios = require('axios')
-const qs = require('qs')
 const _ = require('lodash')
 const randomize = require('randomatic')
 const debug = require('debug')('botium-connector-genesys-open-messaging')
 const SimpleRestContainer = require('botium-core/src/containers/plugins/SimpleRestContainer')
 const { Capabilities: CoreCapabilities } = require('botium-core')
 const { Capabilities, UrlsByRegion } = require('./constants')
+const { getAccessToken } = require('./util')
 
 const Validate = async (connector) => {
   if (!connector.caps[Capabilities.GENESYS_CLIENT_ID]) throw new Error('GENESYS_CLIENT_ID capability required')
@@ -26,18 +25,11 @@ const Validate = async (connector) => {
       [CoreCapabilities.SIMPLEREST_URL]: `${connector.apiEndpoint}/api/v2/conversations/messages/inbound/open`,
       [CoreCapabilities.SIMPLEREST_METHOD]: 'POST',
       [CoreCapabilities.SIMPLEREST_START_HOOK]: async ({ context, botium }) => {
-        const requestOptions = {
-          method: 'post',
-          url: `${connector.authEndpoint}/oauth/token`,
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Authorization: `Basic ${Buffer.from(`${connector.caps[Capabilities.GENESYS_CLIENT_ID]}:${connector.caps[Capabilities.GENESYS_CLIENT_SECRET]}`).toString('base64')}`
-          },
-          data: qs.stringify({ grant_type: 'client_credentials' })
-        }
-        const authResult = await axios(requestOptions)
-        botium.accessToken = authResult.data.access_token
-
+        botium.accessToken = await getAccessToken(
+          connector.caps[Capabilities.GENESYS_AWS_REGION],
+          connector.caps[Capabilities.GENESYS_CLIENT_ID],
+          connector.caps[Capabilities.GENESYS_CLIENT_SECRET]
+        )
         connector.from = connector.caps[Capabilities.GENESYS_USER_DATA] || { id: botium.conversationId }
         botium.userId = connector.from.id
       },
