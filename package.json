@@ -41,6 +41,7 @@
     "qs": "^6.11.0",
     "randomatic": "^3.1.1",
     "request-promise-native": "^1.0.8",
+    "slugify": "^1.4.0",
     "uuid": "^7.0.3",
     "ws": "^7.5.9"
   },
