@@ -137,7 +137,7 @@ describe('importhandler', function () {
     const utterance = result.utterances[0]
     assert.equal(utterance.name, 'digitalBotFlow01_intent01')
     assert.isTrue(utterance.utterances.includes('Tell me a joke'))
-  }).timeout(10000)
+  })
 
   it('should fail at access token', async function () {
     mockGenesysApi({ auth: false })
@@ -147,7 +147,7 @@ describe('importhandler', function () {
     } catch (err) {
       assert.equal(err.message, 'Failed to get access token: Request failed with status code 400')
     }
-  }).timeout(10000)
+  })
 
   it('should fail at flow list', async function () {
     mockGenesysApi({ flowList: false })
@@ -159,7 +159,7 @@ describe('importhandler', function () {
     } catch (err) {
       assert.equal(err.message, 'Import failed: Request failed with status code 400')
     }
-  }).timeout(10000)
+  })
 
   it('should fail at inbound Message Flow', async function () {
     mockGenesysApi({ inboundMessageFlow: false })
@@ -171,5 +171,5 @@ describe('importhandler', function () {
     } catch (err) {
       assert.equal(err.message, 'Import failed: Request failed with status code 400')
     }
-  }).timeout(10000)
+  })
 })
