@@ -18,7 +18,7 @@ const getAccessToken = async (awsRegion, clientId, clientSecret) => {
     const authResult = await axios(requestOptions)
     return authResult.data.access_token
   } catch (err) {
-    throw new Error(`Failed to get access token: : ${err.message}`)
+    throw new Error(`Failed to get access token: ${err.message}`)
   }
 }
 
