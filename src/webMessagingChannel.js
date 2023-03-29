@@ -49,7 +49,6 @@ const Start = async (connector) => {
 
     connector.ws.on('close', async () => {
       debug(`Websocket connection to ${webSockerUrl} closed.`)
-      await connector.Stop()
     })
 
     connector.ws.on('error', (err) => {
@@ -168,6 +167,7 @@ const UserSays = async (connector, msg) => {
 }
 
 const Stop = async (connector) => {
+  connector.ws.close()
 }
 
 const Clean = async (connector) => {
