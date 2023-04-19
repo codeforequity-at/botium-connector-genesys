@@ -4,6 +4,12 @@ const slugify = require('slugify')
 const { getAccessToken } = require('./util')
 const { Capabilities, UrlsByRegion } = require('./constants')
 const _ = require('lodash')
+const INCOMPREHENSION_INTENT = 'None'
+const INCOMPREHENSION_INTENT_STRUCT = {
+  name: INCOMPREHENSION_INTENT,
+  incomprehension: true,
+  confidence: 1
+}
 
 const axiosWithCustomError = async (options, msg) => {
   try {
@@ -50,6 +56,7 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
           if (!utterances[intentName]) {
             utterances[intentName] = {
               name: intentName,
+              originalName: intent.name,
               utterances: [uttText]
             }
           } else {
@@ -66,11 +73,33 @@ const _importIt = async ({ caps, inboundMessageFlowName, clientId, clientSecret,
   const accessToken = await getAccessToken(caps[Capabilities.GENESYS_AWS_REGION], clientId || caps[Capabilities.GENESYS_CLIENT_ID], clientSecret || caps[Capabilities.GENESYS_CLIENT_SECRET])
   const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
 
+  const botFlowIds = await getBotFlowIds(inboundMessageFlowName || caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME], apiEndPoint, accessToken)
+
+  if (botFlowIds.length === 0) {
+    return { chatbotData: {}, rawUtterances: {} }
+  }
+  const utterances = {}
+  const chatbotData = []
+  for (const botFlowId of botFlowIds) {
+    await _updateUtterancesByBotFlow(apiEndPoint, accessToken, botFlowId, chatbotData, utterances, language)
+  }
+
+  return { chatbotData: chatbotData.length > 1 ? chatbotData : chatbotData[0], rawUtterances: utterances }
+}
+
+/**
+ *
+ * @param inboundMessageFlowName
+ * @param apiEndPoint
+ * @param accessToken
+ * @returns {Promise<[]>}
+ */
+const getBotFlowIds = async (inboundMessageFlowName, apiEndPoint, accessToken) => {
   const reqOptionInboundMessageFlow = {
     method: 'get',
     url: `${apiEndPoint}/api/v2/flows`,
     params: {
-      name: inboundMessageFlowName || caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME]
+      name: inboundMessageFlowName
     },
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -101,16 +130,7 @@ const _importIt = async ({ caps, inboundMessageFlowName, clientId, clientSecret,
   botFlowIds.push(...(_.get(responseInboundMessageFlowConfig, 'data.manifest.botFlow')
     ? _.get(responseInboundMessageFlowConfig, 'data.manifest.botFlow').map(bot => bot.id) : []))
 
-  if (botFlowIds.length === 0) {
-    return { chatbotData: {}, rawUtterances: {} }
-  }
-  const utterances = {}
-  const chatbotData = []
-  for (const botFlowId of botFlowIds) {
-    await _updateUtterancesByBotFlow(apiEndPoint, accessToken, botFlowId, chatbotData, utterances, language)
-  }
-
-  return { chatbotData: chatbotData.length > 1 ? chatbotData : chatbotData[0], rawUtterances: utterances }
+  return botFlowIds
 }
 
 /**
@@ -137,7 +157,7 @@ const importGenesysBotFlowIntents = async ({ caps, buildconvos, inboundMessageFl
           conversation: [
             {
               sender: 'me',
-              messageText: utterance.name
+              messageText: utterance.originalName
             },
             {
               sender: 'bot',
@@ -161,6 +181,81 @@ const importGenesysBotFlowIntents = async ({ caps, buildconvos, inboundMessageFl
   } catch (err) {
     throw new Error(`Import failed: ${err.message}`)
   }
+}
+
+const getBotFlowsConfiguration = async (inboundMessageFlowName, apiEndPoint, accessToken) => {
+  const botFlowIds = await getBotFlowIds(inboundMessageFlowName, apiEndPoint, accessToken)
+  const botFlowsConfiguration = []
+  for (const botFlowId of botFlowIds) {
+    const reqOptionBotFlowConfig = {
+      method: 'get',
+      url: `${apiEndPoint}/api/v2/flows/${botFlowId}/latestconfiguration`,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    }
+    debug(`Request the latest configuration for botflow: ${JSON.stringify(reqOptionBotFlowConfig, null, 2)}`)
+    const responseBotFlowConfig = await axiosWithCustomError(reqOptionBotFlowConfig, 'Request the latest configuration for botflow failed')
+    botFlowsConfiguration.push({
+      id: botFlowId,
+      name: responseBotFlowConfig.data.name,
+      domainId: _.get(responseBotFlowConfig, 'data.botFlowSettings.nluDomainId'),
+      domainVersionId: _.get(responseBotFlowConfig, 'data.botFlowSettings.nluDomainVersionId')
+    })
+  }
+  return botFlowsConfiguration
+}
+
+const detectNlpData = async (botFlowsConfiguration, apiEndPoint, accessToken, messageText) => {
+  let intents = []
+  let usedBotFlowConf
+  for (const botFlowConf of botFlowsConfiguration) {
+    const reqOptionDetectIntentConfig = {
+      method: 'post',
+      url: `${apiEndPoint}/api/v2/languageunderstanding/domains/${botFlowConf.domainId}/versions/${botFlowConf.domainVersionId}/detect`,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      data: JSON.stringify({ input: { text: messageText } })
+    }
+    debug(`Request for detect intent: ${JSON.stringify(reqOptionDetectIntentConfig, null, 2)}`)
+    const responseDetectIntent = await axiosWithCustomError(reqOptionDetectIntentConfig, 'Request for detect intent failed')
+
+    const candidateIntents = responseDetectIntent.data.output.intents
+    if (intents.length === 0 || intents[0].name === 'None') {
+      intents = candidateIntents
+      usedBotFlowConf = botFlowConf
+      continue
+    }
+
+    const candidateIntent = candidateIntents[0]
+    const mostConfidentIntent = intents[0]
+    if (candidateIntent.name !== 'None' && mostConfidentIntent.probability < candidateIntent.probability) {
+      intents = candidateIntents
+      usedBotFlowConf = botFlowConf
+    }
+  }
+
+  const nlp = {}
+  if (intents.length > 0) {
+    if (intents[0].name === 'None') {
+      nlp.intent = INCOMPREHENSION_INTENT_STRUCT
+    } else {
+      intents = intents.map(i => Object.assign(i, { name: `${slugify(usedBotFlowConf.name)}_${slugify(i.name)}` }))
+      nlp.intent = { name: intents[0].name, confidence: intents[0].probability }
+      nlp.intents = intents.length > 1 && intents.slice(1).map((intent) => {
+        return { name: intent.name, confidence: intent.probability }
+      })
+      nlp.entities = intents[0].entities.length > 0 ? intents[0].entities.map(e => ({
+        name: e.name,
+        value: e.value.resolved,
+        confidence: e.probability
+      })) : []
+    }
+  }
+  return nlp
 }
 
 module.exports = {
@@ -200,5 +295,7 @@ module.exports = {
       describe: 'Language (like en-us)',
       type: 'string'
     }
-  }
+  },
+  getBotFlowsConfiguration,
+  detectNlpData
 }

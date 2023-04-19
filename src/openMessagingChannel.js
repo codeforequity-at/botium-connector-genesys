@@ -6,6 +6,7 @@ const SimpleRestContainer = require('botium-core/src/containers/plugins/SimpleRe
 const { Capabilities: CoreCapabilities } = require('botium-core')
 const { Capabilities, UrlsByRegion } = require('./constants')
 const { getAccessToken } = require('./util')
+const { getBotFlowsConfiguration, detectNlpData } = require('./intents')
 
 const Validate = async (connector) => {
   if (!connector.caps[Capabilities.GENESYS_CLIENT_ID]) throw new Error('GENESYS_CLIENT_ID capability required')
@@ -18,6 +19,9 @@ const Validate = async (connector) => {
   connector.authEndpoint = _.get(UrlsByRegion, `${connector.caps[Capabilities.GENESYS_AWS_REGION]}.auth`)
   if (!connector.authEndpoint) {
     throw new Error(`No auth endpoint found for '${connector.caps[Capabilities.GENESYS_AWS_REGION]}' aws region.`)
+  }
+  if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
+    if (!connector.caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME]) throw new Error('GENESYS_INBOUND_MESSAGE_FLOW_NAME capability required for NLP analytics')
   }
 
   if (!connector.delegateContainer) {
@@ -32,6 +36,9 @@ const Validate = async (connector) => {
         )
         connector.from = connector.caps[Capabilities.GENESYS_USER_DATA] || { id: botium.conversationId }
         botium.userId = connector.from.id
+        if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
+          connector.botFlowsConfiguration = await getBotFlowsConfiguration(connector.caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME], connector.apiEndpoint, botium.accessToken)
+        }
       },
       [CoreCapabilities.SIMPLEREST_REQUEST_HOOK]: async ({ requestOptions, msg, context, botium }) => {
         const headers = {
@@ -60,8 +67,9 @@ const Validate = async (connector) => {
         body.type = 'Text'
         body.text = msg.messageText
         requestOptions.body = body
+        connector.currentMessageText = msg.messageText
       },
-      [CoreCapabilities.SIMPLEREST_RESPONSE_HOOK]: ({ botMsg }) => {
+      [CoreCapabilities.SIMPLEREST_RESPONSE_HOOK]: async ({ botMsg, botium }) => {
         debug(`Response Body: ${util.inspect(botMsg.sourceData, false, null, true)}`)
 
         if (botMsg.sourceData.direction === 'Outbound') {
@@ -71,6 +79,11 @@ const Validate = async (connector) => {
 
           if (botMsg.sourceData.type === 'Text') {
             botMsg.messageText = botMsg.sourceData.text
+          }
+
+          if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true && connector.currentMessageText) {
+            botMsg.nlp = await detectNlpData(connector.botFlowsConfiguration, connector.apiEndpoint, botium.accessToken, connector.currentMessageText)
+            connector.currentMessageText = undefined
           }
         }
       },
