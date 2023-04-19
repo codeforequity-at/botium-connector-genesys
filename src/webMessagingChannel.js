@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid')
 const axios = require('axios')
 const WebSocket = require('ws')
 const _ = require('lodash')
-const Queue = require('bull')
+const Queue = require('better-queue')
 const debug = require('debug')('botium-connector-genesys-web-messaging')
 const { Capabilities, UrlsByRegion } = require('./constants')
 const { detectNlpData, getBotFlowsConfiguration } = require('./intents')
@@ -51,15 +51,18 @@ const Start = async (connector) => {
   if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
     connector.view.botium.accessToken = await getAccessToken(connector.caps[Capabilities.GENESYS_AWS_REGION], connector.caps[Capabilities.GENESYS_CLIENT_ID], connector.caps[Capabilities.GENESYS_CLIENT_SECRET])
     connector.botFlowsConfiguration = await getBotFlowsConfiguration(connector.caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME], connector.apiEndpoint, connector.view.botium.accessToken)
-    connector.view.botium.botMsgQueue = new Queue('botMsgQueue')
-
-    connector.view.botium.botMsgQueue.process(async (job, done) => {
-      if (connector.currentMessageText) {
-        job.data.nlp = await detectNlpData(connector.botFlowsConfiguration, connector.apiEndpoint, connector.view.botium.accessToken, connector.currentMessageText)
-        connector.currentMessageText = undefined
+    connector.view.botium.botMsgQueue = new Queue(async (input, cb) => {
+      try {
+        if (connector.currentMessageText) {
+          input.nlp = await detectNlpData(connector.botFlowsConfiguration, connector.apiEndpoint, connector.view.botium.accessToken, connector.currentMessageText)
+          connector.currentMessageText = undefined
+        }
+        connector.queueBotSays(input)
+      } catch (e) {
+        debug(`Error occured during nlp detection: ${e}`)
+      } finally {
+        cb()
       }
-      connector.queueBotSays(job.data)
-      done()
     })
   }
 
@@ -147,7 +150,7 @@ const Start = async (connector) => {
         }
 
         if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
-          await connector.view.botium.botMsgQueue.add(botMsg)
+          await connector.view.botium.botMsgQueue.push(botMsg)
         } else {
           connector.queueBotSays(botMsg)
         }

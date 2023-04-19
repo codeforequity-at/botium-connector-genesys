@@ -43,7 +43,7 @@
   "dependencies": {
     "@babel/runtime": "^7.6.2",
     "axios": "^1.3.2",
-    "bull": "^4.10.4",
+    "better-queue": "^3.8.12",
     "debug": "^4.1.1",
     "lodash": "^4.17.15",
     "mime-types": "^2.1.35",
