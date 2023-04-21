@@ -15,7 +15,7 @@ describe('importhandler', function () {
     assert.equal(result.convos.length, 0)
     assert.isAbove(result.utterances.length, 0)
     const utterance = result.utterances[0]
-    assert.equal(utterance.name, 'BotiumGenesysConnectorTest_Joke')
+    assert.equal(utterance.name, 'Joke')
     assert.isTrue(utterance.utterances.includes('jokes'))
     assert.isTrue(utterance.utterances.includes('Tell me a joke'))
   }).timeout(10000)
