@@ -193,6 +193,12 @@ You have to specify the AWS region where your Genesys account located
 #### GENESYS_MESSAGING_CHANNEL*
 You can choose between Web Messaging (WEB_MESSAGING) - websocket and Open Messaging (OPEN_MESSAGING) - webhook channels
 
+#### GENESYS_NLP_ANALYTICS
+You can enable NLP analytics by this boolean flag. (false by default)
+
+#### GENESYS_INBOUND_MESSAGE_FLOW_NAME
+When you turn on `GENESYS_NLP_ANALYTICS`, then it's required to specify the inbound message flow name.
+
 ### WEB MESSAGING
 
 #### GENESYS_DEPLOYMENT_ID*

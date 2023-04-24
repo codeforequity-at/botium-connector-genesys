@@ -4,8 +4,11 @@ const { v4: uuidv4 } = require('uuid')
 const axios = require('axios')
 const WebSocket = require('ws')
 const _ = require('lodash')
+const Queue = require('better-queue')
 const debug = require('debug')('botium-connector-genesys-web-messaging')
 const { Capabilities, UrlsByRegion } = require('./constants')
+const { detectNlpData, getBotFlowsConfiguration } = require('./intents')
+const { getAccessToken } = require('./util')
 
 const Validate = async (connector) => {
   if (!connector.caps[Capabilities.GENESYS_DEPLOYMENT_ID]) throw new Error('GENESYS_DEPLOYMENT_ID capability required')
@@ -14,6 +17,19 @@ const Validate = async (connector) => {
   connector.wsEndpoint = _.get(UrlsByRegion, `${connector.caps[Capabilities.GENESYS_AWS_REGION]}.websocket`)
   if (!connector.wsEndpoint) {
     throw new Error(`No websocket address found for '${connector.caps[Capabilities.GENESYS_AWS_REGION]}' aws region.`)
+  }
+  if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
+    if (!connector.caps[Capabilities.GENESYS_CLIENT_ID]) throw new Error('GENESYS_CLIENT_ID capability required for NLP analytics')
+    if (!connector.caps[Capabilities.GENESYS_CLIENT_SECRET]) throw new Error('GENESYS_CLIENT_SECRET capability required for NLP analytics')
+    if (!connector.caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME]) throw new Error('GENESYS_INBOUND_MESSAGE_FLOW_NAME capability required for NLP analytics')
+    connector.apiEndpoint = _.get(UrlsByRegion, `${connector.caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+    if (!connector.apiEndpoint) {
+      throw new Error(`No api endpoint found for '${connector.caps[Capabilities.GENESYS_AWS_REGION]}' aws region.`)
+    }
+    connector.authEndpoint = _.get(UrlsByRegion, `${connector.caps[Capabilities.GENESYS_AWS_REGION]}.auth`)
+    if (!connector.authEndpoint) {
+      throw new Error(`No auth endpoint found for '${connector.caps[Capabilities.GENESYS_AWS_REGION]}' aws region.`)
+    }
   }
 }
 
@@ -30,6 +46,24 @@ const Start = async (connector) => {
       conversationId: uuidv4(),
       stepId: null
     }
+  }
+
+  if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
+    connector.view.botium.accessToken = await getAccessToken(connector.caps[Capabilities.GENESYS_AWS_REGION], connector.caps[Capabilities.GENESYS_CLIENT_ID], connector.caps[Capabilities.GENESYS_CLIENT_SECRET])
+    connector.botFlowsConfiguration = await getBotFlowsConfiguration(connector.caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME], connector.apiEndpoint, connector.view.botium.accessToken)
+    connector.view.botium.botMsgQueue = new Queue(async (input, cb) => {
+      try {
+        if (connector.currentMessageText) {
+          input.nlp = await detectNlpData(connector.botFlowsConfiguration, connector.apiEndpoint, connector.view.botium.accessToken, connector.currentMessageText)
+          connector.currentMessageText = undefined
+        }
+        connector.queueBotSays(input)
+      } catch (e) {
+        debug(`Error occured during nlp detection: ${e}`)
+      } finally {
+        cb()
+      }
+    })
   }
 
   return new Promise((resolve, reject) => {
@@ -115,7 +149,11 @@ const Start = async (connector) => {
           }
         }
 
-        connector.queueBotSays(botMsg)
+        if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
+          await connector.view.botium.botMsgQueue.push(botMsg)
+        } else {
+          connector.queueBotSays(botMsg)
+        }
       }
     })
   })
@@ -163,6 +201,7 @@ const UserSays = async (connector, msg) => {
       text: msg.messageText
     }
   }
+  connector.currentMessageText = messageData.message.text
   connector.ws.send(JSON.stringify(messageData))
 }
 

@@ -135,7 +135,7 @@ describe('importhandler', function () {
     assert.equal(result.convos.length, 0)
     assert.isAbove(result.utterances.length, 0)
     const utterance = result.utterances[0]
-    assert.equal(utterance.name, 'digitalBotFlow01_intent01')
+    assert.equal(utterance.name, 'intent01')
     assert.isTrue(utterance.utterances.includes('Tell me a joke'))
   })
 
