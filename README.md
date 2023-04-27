@@ -227,4 +227,3 @@ E.g.:
     "lastName": "User"
 }
 ```
-
