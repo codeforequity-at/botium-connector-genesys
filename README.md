@@ -227,5 +227,5 @@ E.g.:
     "lastName": "User"
 }
 ```
-jenkins test3
+jenkins test
  
