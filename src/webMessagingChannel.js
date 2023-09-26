@@ -201,6 +201,15 @@ const UserSays = async (connector, msg) => {
       text: msg.messageText
     }
   }
+
+  if (connector.caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]) {
+    messageData.message.channel = {
+      metadata: {
+        customAttributes: connector.caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]
+      }
+    }
+  }
+
   connector.currentMessageText = messageData.message.text
   connector.ws.send(JSON.stringify(messageData))
 }

@@ -15,6 +15,10 @@
         "firstName": "Messaging",
         "lastName": "User"
       },
+      "GENESYS_CUSTOM_ATTRIBUTES": {
+        "department": "sales",
+        "device": "mobile"
+      },
       "SIMPLEREST_INBOUND_REDISURL": "redis://127.0.0.1:6379"
     }
   }
