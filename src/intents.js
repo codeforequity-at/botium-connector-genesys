@@ -67,6 +67,40 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
     }
     chatbotData.push(responseNluDomain.data)
   }
+
+  const knowledgeBaseId = _.get(responseBotFlowConfig, 'data.knowledgeSettings.knowledgeBaseId')
+  if (knowledgeBaseId) {
+    const reqOptionKnowledgeBase = {
+      method: 'get',
+      url: `${apiEndPoint}/api/v2/knowledge/knowledgebases/${knowledgeBaseId}/documents`,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    }
+    debug(`Request knowledge base: ${JSON.stringify(reqOptionKnowledgeBase, null, 2)}`)
+    const responseKnowledgeBase = await axiosWithCustomError(reqOptionKnowledgeBase, ' Request knowledge base failed')
+
+    for (const entity of responseKnowledgeBase.data.entities) {
+      const intentName = entity.title
+      for (const alternative of entity.alternatives) {
+        const uttText = alternative.phrase
+        if (!_.isEmpty(uttText)) {
+          if (!utterances[intentName]) {
+            utterances[intentName] = {
+              name: intentName,
+              utterances: [uttText]
+            }
+          } else {
+            if (!utterances[intentName].utterances.includes(uttText)) {
+              utterances[intentName].utterances.push(uttText)
+            }
+          }
+        }
+      }
+    }
+    chatbotData.push(responseKnowledgeBase.data)
+  }
 }
 
 const _importIt = async ({ caps, inboundMessageFlowName, botFlowId, clientId, clientSecret, language }) => {
@@ -201,41 +235,145 @@ const getBotFlowsConfiguration = async (inboundMessageFlowName, apiEndPoint, acc
     }
     debug(`Request the latest configuration for botflow: ${JSON.stringify(reqOptionBotFlowConfig, null, 2)}`)
     const responseBotFlowConfig = await axiosWithCustomError(reqOptionBotFlowConfig, 'Request the latest configuration for botflow failed')
+
     botFlowsConfiguration.push({
       id: botFlow.id,
       name: responseBotFlowConfig.data.name,
       domainId: _.get(responseBotFlowConfig, 'data.botFlowSettings.nluDomainId'),
-      domainVersionId: _.get(responseBotFlowConfig, 'data.botFlowSettings.nluDomainVersionId')
+      domainVersionId: _.get(responseBotFlowConfig, 'data.botFlowSettings.nluDomainVersionId'),
+      knowledgeBaseId: _.get(responseBotFlowConfig, 'data.knowledgeSettings.knowledgeBaseId'),
+      maxNumOfAnswersReturned: _.get(responseBotFlowConfig, 'data.knowledgeSettings.maxNumOfAnswersReturned.text') || '3',
+      responseBias: _.get(responseBotFlowConfig, 'data.knowledgeSettings.responseBias.text') || 'neutral'
     })
   }
   return botFlowsConfiguration
 }
 
-const detectNlpData = async (botFlowsConfiguration, apiEndPoint, accessToken, messageText) => {
-  let intents = []
-  for (const botFlowConf of botFlowsConfiguration) {
-    const reqOptionDetectIntentConfig = {
-      method: 'post',
-      url: `${apiEndPoint}/api/v2/languageunderstanding/domains/${botFlowConf.domainId}/versions/${botFlowConf.domainVersionId}/detect`,
+const detectIntentInDomain = async (botFlowConf, apiEndPoint, accessToken, messageText, mostConfidentIntentSoFar) => {
+  const reqOptionDetectIntentConfig = {
+    method: 'post',
+    url: `${apiEndPoint}/api/v2/languageunderstanding/domains/${botFlowConf.domainId}/versions/${botFlowConf.domainVersionId}/detect`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    data: JSON.stringify({ input: { text: messageText } })
+  }
+  debug(`Request for detect intent: ${JSON.stringify(reqOptionDetectIntentConfig, null, 2)}`)
+  const responseDetectIntent = await axiosWithCustomError(reqOptionDetectIntentConfig, 'Request for detect intent failed')
+
+  const candidateIntents = responseDetectIntent.data.output.intents
+  if (!mostConfidentIntentSoFar || mostConfidentIntentSoFar.name === 'None') {
+    return candidateIntents
+  }
+
+  const candidateIntent = candidateIntents[0]
+  if (candidateIntent && candidateIntent.name !== 'None' && mostConfidentIntentSoFar.probability < candidateIntent.probability) {
+    return candidateIntents
+  }
+  return []
+}
+
+const searchInKnowledge = async (botFlowConf, apiEndPoint, accessToken, messageText, mostConfidentIntentSoFar) => {
+  const reqOptionSearchKnowledgeConfig = {
+    method: 'post',
+    url: `${apiEndPoint}/api/v2/knowledge/knowledgebases/${botFlowConf.knowledgeBaseId}/documents/search`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    data: JSON.stringify({
+      query: messageText,
+      pageSize: botFlowConf.maxNumOfAnswersReturned,
+      sortBy: 'ConfidenceScore'
+    })
+  }
+  debug(`Request for search knowledge: ${JSON.stringify(reqOptionSearchKnowledgeConfig, null, 2)}`)
+  const responseSearchKnowledge = await axiosWithCustomError(reqOptionSearchKnowledgeConfig, 'Request for search knowledge failed')
+
+  const candidateIntents = responseSearchKnowledge.data.results.map(knowledge => (
+    {
+      probability: knowledge.confidence,
+      name: knowledge.document.title
+    }
+  ))
+  if (!mostConfidentIntentSoFar || mostConfidentIntentSoFar.name === 'None') {
+    return candidateIntents
+  }
+
+  const candidateIntent = candidateIntents[0]
+  if (candidateIntent && candidateIntent.name !== 'None' && mostConfidentIntentSoFar.probability < candidateIntent.probability) {
+    return candidateIntents
+  }
+  return []
+}
+
+const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, messageText, messageId, botFlowNameField }) => {
+  let botFlowName
+  if (messageId && botFlowNameField) {
+    const reqOptionMessageDetails = {
+      method: 'get',
+      url: `${apiEndPoint}/api/v2/conversations/messages/${messageId}/details`,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
-      },
-      data: JSON.stringify({ input: { text: messageText } })
+      }
     }
-    debug(`Request for detect intent: ${JSON.stringify(reqOptionDetectIntentConfig, null, 2)}`)
-    const responseDetectIntent = await axiosWithCustomError(reqOptionDetectIntentConfig, 'Request for detect intent failed')
+    debug(`Request for message details: ${JSON.stringify(reqOptionMessageDetails, null, 2)}`)
+    const responseMessageDetails = await axiosWithCustomError(reqOptionMessageDetails, 'Request for message details failed')
 
-    const candidateIntents = responseDetectIntent.data.output.intents
-    if (intents.length === 0 || intents[0].name === 'None') {
-      intents = candidateIntents
-      continue
+    const reqOptionConversation = {
+      method: 'get',
+      url: `${apiEndPoint}/api/v2/conversations/${responseMessageDetails.data.conversationId}`,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
     }
+    debug(`Request for conversation: ${JSON.stringify(reqOptionConversation, null, 2)}`)
+    const responseConversation = await axiosWithCustomError(reqOptionConversation, 'Request for conversation failed')
 
-    const candidateIntent = candidateIntents[0]
-    const mostConfidentIntent = intents[0]
-    if (candidateIntent.name !== 'None' && mostConfidentIntent.probability < candidateIntent.probability) {
-      intents = candidateIntents
+    const participant = _.find(responseConversation.data.participants, p => !_.isNil(p.attributes[botFlowNameField]))
+    botFlowName = participant && participant.attributes[botFlowNameField]
+  }
+
+  let intents = []
+  const detectNlpDataByFlow = async (botFlowConf) => {
+    if (botFlowConf.knowledgeBaseId && messageText && messageText.length >= 3) {
+      const responseBias = botFlowConf.responseBias
+      if (responseBias === 'intents') {
+        const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
+        if (detectedIntents.length > 0) {
+          intents = detectedIntents
+        }
+        const foundIntents = await searchInKnowledge(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
+        if (foundIntents.length > 0) {
+          intents = foundIntents
+        }
+      } else {
+        // The responseBias either 'knowledge' or 'neutral'. In these cases knowledge has priority
+        const foundIntents = await searchInKnowledge(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
+        if (foundIntents.length > 0) {
+          intents = foundIntents
+        }
+        const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
+        if (detectedIntents.length > 0) {
+          intents = detectedIntents
+        }
+      }
+    } else {
+      const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
+      if (detectedIntents.length > 0) {
+        intents = detectedIntents
+      }
+    }
+  }
+
+  if (botFlowName && _.some(botFlowsConfiguration, bfConfig => bfConfig.name === botFlowName)) {
+    await detectNlpDataByFlow(_.find(botFlowsConfiguration, bfConfig => bfConfig.name === botFlowName))
+  } else {
+    for (const botFlowConf of botFlowsConfiguration) {
+      await detectNlpDataByFlow(botFlowConf)
     }
   }
 
@@ -248,7 +386,7 @@ const detectNlpData = async (botFlowsConfiguration, apiEndPoint, accessToken, me
       nlp.intents = intents.length > 1 && intents.slice(1).map((intent) => {
         return { name: intent.name, confidence: intent.probability }
       })
-      nlp.entities = intents[0].entities.length > 0 ? intents[0].entities.map(e => ({
+      nlp.entities = intents[0].entities && intents[0].entities.length > 0 ? intents[0].entities.map(e => ({
         name: e.name,
         value: e.value.resolved,
         confidence: e.probability

@@ -54,13 +54,20 @@ const Start = async (connector) => {
     connector.view.botium.botMsgQueue = new Queue(async (input, cb) => {
       try {
         if (connector.currentMessageText) {
-          input.nlp = await detectNlpData(connector.botFlowsConfiguration, connector.apiEndpoint, connector.view.botium.accessToken, connector.currentMessageText)
+          input.nlp = await detectNlpData({
+            botFlowsConfiguration: connector.botFlowsConfiguration,
+            apiEndPoint: connector.apiEndpoint,
+            accessToken: connector.view.botium.accessToken,
+            messageText: connector.currentMessageText,
+            messageId: _.get(input, 'sourceData.body.id'),
+            botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME]
+          })
           connector.currentMessageText = undefined
         }
-        connector.queueBotSays(input)
       } catch (e) {
         debug(`Error occured during nlp detection: ${e}`)
       } finally {
+        connector.queueBotSays(input)
         cb()
       }
     })
