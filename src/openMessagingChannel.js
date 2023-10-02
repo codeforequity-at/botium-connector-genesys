@@ -88,7 +88,14 @@ const Validate = async (connector) => {
           }
 
           if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true && connector.currentMessageText) {
-            botMsg.nlp = await detectNlpData(connector.botFlowsConfiguration, connector.apiEndpoint, botium.accessToken, connector.currentMessageText)
+            botMsg.nlp = await detectNlpData({
+              botFlowsConfiguration: connector.botFlowsConfiguration,
+              apiEndPoint: connector.apiEndpoint,
+              accessToken: botium.accessToken,
+              messageText: connector.currentMessageText,
+              messageId: _.get(botMsg, 'sourceData.channel.messageId'),
+              botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME]
+            })
             connector.currentMessageText = undefined
           }
         }
