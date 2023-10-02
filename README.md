@@ -149,6 +149,7 @@ By changing the corresponding capabilities you can use it with your Genesys bot.
     * Adapt botium.json in the sample directory:
         * Change `GENESYS_AWS_REGION` with your Genesys aws region
         * Change `GENESYS_DEPLOYMENT_ID` with your Messenger Deployment key
+        * Change `GENESYS_CUSTOM_ATTRIBUTES` if necessary
     * Finally run the test
         ```
           > npm test
@@ -169,6 +170,7 @@ By changing the corresponding capabilities you can use it with your Genesys bot.
         * Change `GENESYS_CLIENT_SECRET` with your OAuth Client Secret
         * Change `GENESYS_OPEN_MESSAGING_INTEGRATION_ID` with your Open Messaging integration Id
         * Change `GENESYS_USER_DATA` if necessary
+        * Change `GENESYS_CUSTOM_ATTRIBUTES` if necessary
 
     * Start `inbound-proxy` (it will listen on `http://127.0.0.1:45100/`):
       ```
@@ -225,5 +227,15 @@ E.g.:
     "idType": "email",
     "firstName": "Messaging",
     "lastName": "User"
+}
+```
+
+#### GENESYS_CUSTOM_ATTRIBUTES
+You can define a custom attribute object.
+E.g.:
+```
+{
+    "department": "sales",
+    "device": "mobile"
 }
 ```

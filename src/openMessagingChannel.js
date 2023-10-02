@@ -63,6 +63,12 @@ const Validate = async (connector) => {
           direction: 'Inbound'
         }
 
+        if (connector.caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]) {
+          body.channel.metadata = {
+            customAttributes: connector.caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]
+          }
+        }
+
         // Only text based communication is supported by open messaging channel
         body.type = 'Text'
         body.text = msg.messageText

@@ -6,6 +6,10 @@
       "GENESYS_MESSAGING_CHANNEL": "WEB_MESSAGING",
       "GENESYS_AWS_REGION": "us-east-1",
       "GENESYS_DEPLOYMENT_ID": "baf4d3ab-d758-4439-995e-c4d86f6d93fa",
+      "GENESYS_CUSTOM_ATTRIBUTES": {
+        "department": "sales",
+        "device": "mobile"
+      },
       "WAITFORBOTTIMEOUT": 30000
     }
   }
