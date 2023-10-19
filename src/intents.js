@@ -81,25 +81,43 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
     debug(`Request knowledge base: ${JSON.stringify(reqOptionKnowledgeBase, null, 2)}`)
     const responseKnowledgeBase = await axiosWithCustomError(reqOptionKnowledgeBase, ' Request knowledge base failed')
 
-    for (const entity of responseKnowledgeBase.data.entities) {
-      const intentName = entity.title
-      for (const alternative of entity.alternatives) {
-        const uttText = alternative.phrase
-        if (!_.isEmpty(uttText)) {
-          if (!utterances[intentName]) {
-            utterances[intentName] = {
-              name: intentName,
-              utterances: [uttText]
-            }
-          } else {
-            if (!utterances[intentName].utterances.includes(uttText)) {
-              utterances[intentName].utterances.push(uttText)
+    const getAllDocumentsRecursive = async (responseKnowledgeBase) => {
+      for (const entity of responseKnowledgeBase.data.entities) {
+        const intentName = entity.title
+        for (const alternative of entity.alternatives) {
+          const uttText = alternative.phrase
+          if (!_.isEmpty(uttText)) {
+            if (!utterances[intentName]) {
+              utterances[intentName] = {
+                name: intentName,
+                utterances: [uttText]
+              }
+            } else {
+              if (!utterances[intentName].utterances.includes(uttText)) {
+                utterances[intentName].utterances.push(uttText)
+              }
             }
           }
         }
       }
+      chatbotData.push(responseKnowledgeBase.data)
+
+      if (responseKnowledgeBase.data.nextUri) {
+        const reqOptionNextKnowledgeBase = {
+          method: 'get',
+          url: `${apiEndPoint}${responseKnowledgeBase.data.nextUri}`,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+        debug(`Request knowledge base: ${JSON.stringify(reqOptionNextKnowledgeBase, null, 2)}`)
+        const responseNextKnowledgeBase = await axiosWithCustomError(reqOptionNextKnowledgeBase, ' Request knowledge base failed')
+        await getAllDocumentsRecursive(responseNextKnowledgeBase)
+      }
     }
-    chatbotData.push(responseKnowledgeBase.data)
+
+    await getAllDocumentsRecursive(responseKnowledgeBase)
   }
 }
 
