@@ -48,18 +48,20 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
 
   if (!language || (language && responseNluDomain.data.language && responseNluDomain.data.language.toLowerCase() === language.toLowerCase())) {
     for (const intent of responseNluDomain.data.intents) {
-      const intentName = intent.name
-      for (const utterance of intent.utterances) {
-        const uttText = utterance.segments.reduce((acc, curr) => acc + curr.text, '').trim()
-        if (!_.isEmpty(uttText)) {
-          if (!utterances[intentName]) {
-            utterances[intentName] = {
-              name: intentName,
-              utterances: [uttText]
-            }
-          } else {
-            if (!utterances[intentName].utterances.includes(uttText)) {
-              utterances[intentName].utterances.push(uttText)
+      if (_.isArray(intent.utterances)) {
+        const intentName = intent.name
+        for (const utterance of intent.utterances) {
+          const uttText = utterance.segments.reduce((acc, curr) => acc + curr.text, '').trim()
+          if (!_.isEmpty(uttText)) {
+            if (!utterances[intentName]) {
+              utterances[intentName] = {
+                name: intentName,
+                utterances: [uttText]
+              }
+            } else {
+              if (!utterances[intentName].utterances.includes(uttText)) {
+                utterances[intentName].utterances.push(uttText)
+              }
             }
           }
         }
@@ -83,18 +85,20 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
 
     const getAllDocumentsRecursive = async (responseKnowledgeBase) => {
       for (const entity of responseKnowledgeBase.data.entities) {
-        const intentName = entity.title
-        for (const alternative of entity.alternatives) {
-          const uttText = alternative.phrase
-          if (!_.isEmpty(uttText)) {
-            if (!utterances[intentName]) {
-              utterances[intentName] = {
-                name: intentName,
-                utterances: [uttText]
-              }
-            } else {
-              if (!utterances[intentName].utterances.includes(uttText)) {
-                utterances[intentName].utterances.push(uttText)
+        if (_.isArray(entity.alternatives)) {
+          const intentName = entity.title
+          for (const alternative of entity.alternatives) {
+            const uttText = alternative.phrase
+            if (!_.isEmpty(uttText)) {
+              if (!utterances[intentName]) {
+                utterances[intentName] = {
+                  name: intentName,
+                  utterances: [uttText]
+                }
+              } else {
+                if (!utterances[intentName].utterances.includes(uttText)) {
+                  utterances[intentName].utterances.push(uttText)
+                }
               }
             }
           }
