@@ -4,6 +4,9 @@ const debug = require('debug')('botium-connector-genesys')
 
 const getAccessToken = async (awsRegion, clientId, clientSecret) => {
   try {
+    const params = new URLSearchParams()
+    params.append('grant_type', 'client_credentials')
+
     const authEndpoint = _.get(UrlsByRegion, `${awsRegion}.auth`)
     const requestOptions = {
       url: `${authEndpoint}/oauth/token`,
@@ -12,7 +15,7 @@ const getAccessToken = async (awsRegion, clientId, clientSecret) => {
         'Content-Type': 'application/x-www-form-urlencoded',
         Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
       },
-      body: JSON.stringify({ grant_type: 'client_credentials' })
+      body: params
     }
     debug(`Request access token: ${JSON.stringify(requestOptions, null, 2)}`)
     const authResponse = await fetch(requestOptions.url, {
