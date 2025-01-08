@@ -1,15 +1,17 @@
 require('dotenv').config()
-const axios = require('axios')
-const MockAdapter = require('axios-mock-adapter')
+const nock = require('nock')
 const assert = require('chai').assert
 const { importHandler } = require('../../src/intents')
 const { UrlsByRegion, Capabilities } = require('../../src/constants')
 const _ = require('lodash')
 const { getAccessToken } = require('../../src/util')
-const caps = {}
+const caps = {
+  GENESYS_AWS_REGION: 'us-east-1',
+  GENESYS_CLIENT_ID: '5305cdc8-5ef9-49b9-8cbe-95e87bd3c42d',
+  GENESYS_CLIENT_SECRET: 'vL9kEoHLCb6AWmby5xpHrbAKviL-Lzu6WCiBUZTtmAU'
+}
 
 const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = true, botFlow = true, nluDomain = true }) => {
-  const mock = new MockAdapter(axios)
   const authEndpoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.auth`)
   const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
 
@@ -23,7 +25,11 @@ const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = tru
     authStatus = 400
     authData = {}
   }
-  mock.onPost(`${authEndpoint}/oauth/token`).reply(authStatus, authData)
+
+  nock(authEndpoint)
+    .post('/oauth/token', body => true, null)
+    .reply(authStatus, authData)
+    .persist()
 
   const inboundMessageId = 'inboundMessage01'
   let flowListStatus = 200
@@ -39,7 +45,11 @@ const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = tru
     flowListStatus = 400
     flowListData = {}
   }
-  mock.onGet(`${apiEndPoint}/api/v2/flows`).reply(flowListStatus, flowListData)
+
+  nock(apiEndPoint)
+    .get('/api/v2/flows')
+    .reply(flowListStatus, flowListData)
+    .persist()
 
   const digitalBotFlowId = 'digitalBotFlow01'
   let inboundMessageFlowStatus = 200
@@ -57,7 +67,10 @@ const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = tru
     inboundMessageFlowStatus = 400
     inboundMessageFlowData = {}
   }
-  mock.onGet(`${apiEndPoint}/api/v2/flows/${inboundMessageId}/latestconfiguration`).reply(inboundMessageFlowStatus, inboundMessageFlowData)
+  nock(apiEndPoint)
+    .get(`/api/v2/flows/${inboundMessageId}/latestconfiguration`)
+    .reply(inboundMessageFlowStatus, inboundMessageFlowData)
+    .persist()
 
   const nluDomainId = 'nluDomainId01'
   const nluDomainVersionId = 'nluDomainVersionId01'
@@ -74,7 +87,10 @@ const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = tru
     botFlowStatus = 400
     botFlowData = {}
   }
-  mock.onGet(`${apiEndPoint}/api/v2/flows/${digitalBotFlowId}/latestconfiguration`).reply(botFlowStatus, botFlowData)
+  nock(apiEndPoint)
+    .get(`/api/v2/flows/${digitalBotFlowId}/latestconfiguration`)
+    .reply(botFlowStatus, botFlowData)
+    .persist()
 
   const intentName = 'intent01'
   let nluDomainStatus = 200
@@ -115,7 +131,10 @@ const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = tru
     nluDomainStatus = 400
     nluDomainData = {}
   }
-  mock.onGet(`${apiEndPoint}/api/v2/languageunderstanding/domains/${nluDomainId}/versions/${nluDomainVersionId}`).reply(nluDomainStatus, nluDomainData)
+  nock(apiEndPoint)
+    .get(`/api/v2/languageunderstanding/domains/${nluDomainId}/versions/${nluDomainVersionId}?includeUtterances=true`)
+    .reply(nluDomainStatus, nluDomainData)
+    .persist()
 }
 
 describe('importhandler', function () {
@@ -124,6 +143,10 @@ describe('importhandler', function () {
       const elementToMerge = element.replace(/^BOTIUM_/, '')
       caps[elementToMerge] = process.env[element]
     })
+  })
+
+  afterEach(async function () {
+    nock.cleanAll()
   })
 
   it('should successfully download intents', async function () {
@@ -145,7 +168,7 @@ describe('importhandler', function () {
       await getAccessToken(caps[Capabilities.GENESYS_AWS_REGION], caps[Capabilities.GENESYS_CLIENT_ID], caps[Capabilities.GENESYS_CLIENT_SECRET])
       assert.fail('it should have failed')
     } catch (err) {
-      assert.equal(err.message, 'Failed to get access token: Request failed with status code 400')
+      assert.equal(err.message, 'Failed to get access token: HTTP error! Status: 400, Message: {}')
     }
   })
 
@@ -157,7 +180,7 @@ describe('importhandler', function () {
       await importHandler({ caps })
       assert.fail('it should have failed')
     } catch (err) {
-      assert.equal(err.message, 'Import failed: Request failed with status code 400')
+      assert.equal(err.message, 'Import failed: Request by name for inbound message flow: HTTP error! Status: 400, Message: {}')
     }
   })
 
@@ -169,7 +192,7 @@ describe('importhandler', function () {
       await importHandler({ caps })
       assert.fail('it should have failed')
     } catch (err) {
-      assert.equal(err.message, 'Import failed: Request failed with status code 400')
+      assert.equal(err.message, 'Import failed: Request the latest configuration for botflow failed: HTTP error! Status: 400, Message: {}')
     }
   })
 })

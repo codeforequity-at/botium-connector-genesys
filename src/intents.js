@@ -1,5 +1,4 @@
 const debug = require('debug')('botium-connector-genesys-intents')
-const axios = require('axios')
 const { getAccessToken } = require('./util')
 const { Capabilities, UrlsByRegion } = require('./constants')
 const _ = require('lodash')
@@ -10,9 +9,19 @@ const INCOMPREHENSION_INTENT_STRUCT = {
   confidence: 1
 }
 
-const axiosWithCustomError = async (options, msg) => {
+const fetchWithCustomError = async (options, msg) => {
   try {
-    return axios(options)
+    const reponse = await fetch(options.url, {
+      method: options.method,
+      headers: options.headers,
+      body: options.body
+    })
+
+    if (!reponse.ok) {
+      const errorDetails = await reponse.text()
+      throw new Error(`HTTP error! Status: ${reponse.status}, Message: ${errorDetails}`)
+    }
+    return reponse.json()
   } catch (err) {
     throw new Error(`${msg}: ${err.message}`)
   }
@@ -28,26 +37,23 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
     }
   }
   debug(`Request the latest configuration for botflow: ${JSON.stringify(reqOptionBotFlowConfig, null, 2)}`)
-  const responseBotFlowConfig = await axiosWithCustomError(reqOptionBotFlowConfig, 'Request the latest configuration for botflow failed')
+  const responseBotFlowConfig = await fetchWithCustomError(reqOptionBotFlowConfig, 'Request the latest configuration for botflow failed')
 
-  const domainId = _.get(responseBotFlowConfig, 'data.botFlowSettings.nluDomainId')
-  const domainVersionId = _.get(responseBotFlowConfig, 'data.botFlowSettings.nluDomainVersionId')
+  const domainId = _.get(responseBotFlowConfig, 'botFlowSettings.nluDomainId')
+  const domainVersionId = _.get(responseBotFlowConfig, 'botFlowSettings.nluDomainVersionId')
   const reqOptionNluDomain = {
     method: 'get',
-    url: `${apiEndPoint}/api/v2/languageunderstanding/domains/${domainId}/versions/${domainVersionId}`,
-    params: {
-      includeUtterances: true
-    },
+    url: `${apiEndPoint}/api/v2/languageunderstanding/domains/${domainId}/versions/${domainVersionId}?includeUtterances=true`,
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
     }
   }
   debug(`Request the latest NLU domain version: ${JSON.stringify(reqOptionNluDomain, null, 2)}`)
-  const responseNluDomain = await axiosWithCustomError(reqOptionNluDomain, ' Request the latest NLU domain version failed')
+  const responseNluDomain = await fetchWithCustomError(reqOptionNluDomain, ' Request the latest NLU domain version failed')
 
-  if (!language || (language && responseNluDomain.data.language && responseNluDomain.data.language.toLowerCase() === language.toLowerCase())) {
-    for (const intent of responseNluDomain.data.intents) {
+  if (!language || (language && responseNluDomain.language && responseNluDomain.language.toLowerCase() === language.toLowerCase())) {
+    for (const intent of responseNluDomain.intents) {
       if (_.isArray(intent.utterances)) {
         const intentName = intent.name
         for (const utterance of intent.utterances) {
@@ -67,10 +73,10 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
         }
       }
     }
-    chatbotData.push(responseNluDomain.data)
+    chatbotData.push(responseNluDomain)
   }
 
-  const knowledgeBaseId = _.get(responseBotFlowConfig, 'data.knowledgeSettings.knowledgeBaseId')
+  const knowledgeBaseId = _.get(responseBotFlowConfig, 'knowledgeSettings.knowledgeBaseId')
   if (knowledgeBaseId) {
     const reqOptionKnowledgeBase = {
       method: 'get',
@@ -81,10 +87,10 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
       }
     }
     debug(`Request knowledge base: ${JSON.stringify(reqOptionKnowledgeBase, null, 2)}`)
-    const responseKnowledgeBase = await axiosWithCustomError(reqOptionKnowledgeBase, ' Request knowledge base failed')
+    const responseKnowledgeBase = await fetchWithCustomError(reqOptionKnowledgeBase, ' Request knowledge base failed')
 
     const getAllDocumentsRecursive = async (responseKnowledgeBase) => {
-      for (const entity of responseKnowledgeBase.data.entities) {
+      for (const entity of responseKnowledgeBase.entities) {
         if (_.isArray(entity.alternatives)) {
           const intentName = entity.title
           for (const alternative of entity.alternatives) {
@@ -104,19 +110,19 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
           }
         }
       }
-      chatbotData.push(responseKnowledgeBase.data)
+      chatbotData.push(responseKnowledgeBase)
 
-      if (responseKnowledgeBase.data.nextUri) {
+      if (responseKnowledgeBase.nextUri) {
         const reqOptionNextKnowledgeBase = {
           method: 'get',
-          url: `${apiEndPoint}${responseKnowledgeBase.data.nextUri}`,
+          url: `${apiEndPoint}${responseKnowledgeBase.nextUri}`,
           headers: {
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           }
         }
         debug(`Request knowledge base: ${JSON.stringify(reqOptionNextKnowledgeBase, null, 2)}`)
-        const responseNextKnowledgeBase = await axiosWithCustomError(reqOptionNextKnowledgeBase, ' Request knowledge base failed')
+        const responseNextKnowledgeBase = await fetchWithCustomError(reqOptionNextKnowledgeBase, ' Request knowledge base failed')
         await getAllDocumentsRecursive(responseNextKnowledgeBase)
       }
     }
@@ -156,18 +162,15 @@ const _importIt = async ({ caps, inboundMessageFlowName, botFlowId, clientId, cl
 const getBotFlows = async (inboundMessageFlowName, apiEndPoint, accessToken) => {
   const reqOptionInboundMessageFlow = {
     method: 'get',
-    url: `${apiEndPoint}/api/v2/flows`,
-    params: {
-      name: inboundMessageFlowName
-    },
+    url: `${apiEndPoint}/api/v2/flows${inboundMessageFlowName ? `?name=${inboundMessageFlowName}` : ''}`,
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
     }
   }
   debug(`Request by name for inbound message flow: ${JSON.stringify(reqOptionInboundMessageFlow, null, 2)}`)
-  const responseInboundMessageFlow = await axiosWithCustomError(reqOptionInboundMessageFlow, 'Request by name for inbound message flow')
-  const inboundMessageFlow = responseInboundMessageFlow.data.entities.find(e => e.type === 'INBOUNDSHORTMESSAGE')
+  const responseInboundMessageFlow = await fetchWithCustomError(reqOptionInboundMessageFlow, 'Request by name for inbound message flow')
+  const inboundMessageFlow = responseInboundMessageFlow.entities.find(e => e.type === 'INBOUNDSHORTMESSAGE')
   if (!inboundMessageFlow) {
     throw new Error(`Inbound Message flow not found by '${inboundMessageFlowName}' name`)
   }
@@ -181,13 +184,13 @@ const getBotFlows = async (inboundMessageFlowName, apiEndPoint, accessToken) => 
     }
   }
   debug(`Request the latest configuration for botflow: ${JSON.stringify(reqOptionInboundMessageFlowConfig, null, 2)}`)
-  const responseInboundMessageFlowConfig = await axiosWithCustomError(reqOptionInboundMessageFlowConfig, 'Request the latest configuration for botflow failed')
+  const responseInboundMessageFlowConfig = await fetchWithCustomError(reqOptionInboundMessageFlowConfig, 'Request the latest configuration for botflow failed')
 
   const botFlows = []
-  botFlows.push(...(_.get(responseInboundMessageFlowConfig, 'data.manifest.digitalBotFlow')
-    ? _.get(responseInboundMessageFlowConfig, 'data.manifest.digitalBotFlow').map(bot => ({ id: bot.id, name: bot.name })) : []))
-  botFlows.push(...(_.get(responseInboundMessageFlowConfig, 'data.manifest.botFlow')
-    ? _.get(responseInboundMessageFlowConfig, 'data.manifest.botFlow').map(bot => ({ id: bot.id, name: bot.name })) : []))
+  botFlows.push(...(_.get(responseInboundMessageFlowConfig, 'manifest.digitalBotFlow')
+    ? _.get(responseInboundMessageFlowConfig, 'manifest.digitalBotFlow').map(bot => ({ id: bot.id, name: bot.name })) : []))
+  botFlows.push(...(_.get(responseInboundMessageFlowConfig, 'manifest.botFlow')
+    ? _.get(responseInboundMessageFlowConfig, 'manifest.botFlow').map(bot => ({ id: bot.id, name: bot.name })) : []))
 
   return botFlows
 }
@@ -256,16 +259,16 @@ const getBotFlowsConfiguration = async (inboundMessageFlowName, apiEndPoint, acc
       }
     }
     debug(`Request the latest configuration for botflow: ${JSON.stringify(reqOptionBotFlowConfig, null, 2)}`)
-    const responseBotFlowConfig = await axiosWithCustomError(reqOptionBotFlowConfig, 'Request the latest configuration for botflow failed')
+    const responseBotFlowConfig = await fetchWithCustomError(reqOptionBotFlowConfig, 'Request the latest configuration for botflow failed')
 
     botFlowsConfiguration.push({
       id: botFlow.id,
-      name: responseBotFlowConfig.data.name,
-      domainId: _.get(responseBotFlowConfig, 'data.botFlowSettings.nluDomainId'),
-      domainVersionId: _.get(responseBotFlowConfig, 'data.botFlowSettings.nluDomainVersionId'),
-      knowledgeBaseId: _.get(responseBotFlowConfig, 'data.knowledgeSettings.knowledgeBaseId'),
-      maxNumOfAnswersReturned: _.get(responseBotFlowConfig, 'data.knowledgeSettings.maxNumOfAnswersReturned.text') || '3',
-      responseBias: _.get(responseBotFlowConfig, 'data.knowledgeSettings.responseBias.text') || 'neutral'
+      name: responseBotFlowConfig.name,
+      domainId: _.get(responseBotFlowConfig, 'botFlowSettings.nluDomainId'),
+      domainVersionId: _.get(responseBotFlowConfig, 'botFlowSettings.nluDomainVersionId'),
+      knowledgeBaseId: _.get(responseBotFlowConfig, 'knowledgeSettings.knowledgeBaseId'),
+      maxNumOfAnswersReturned: _.get(responseBotFlowConfig, 'knowledgeSettings.maxNumOfAnswersReturned.text') || '3',
+      responseBias: _.get(responseBotFlowConfig, 'knowledgeSettings.responseBias.text') || 'neutral'
     })
   }
   return botFlowsConfiguration
@@ -279,12 +282,12 @@ const detectIntentInDomain = async (botFlowConf, apiEndPoint, accessToken, messa
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
     },
-    data: JSON.stringify({ input: { text: messageText } })
+    body: JSON.stringify({ input: { text: messageText } })
   }
   debug(`Request for detect intent: ${JSON.stringify(reqOptionDetectIntentConfig, null, 2)}`)
-  const responseDetectIntent = await axiosWithCustomError(reqOptionDetectIntentConfig, 'Request for detect intent failed')
+  const responseDetectIntent = await fetchWithCustomError(reqOptionDetectIntentConfig, 'Request for detect intent failed')
 
-  const candidateIntents = responseDetectIntent.data.output.intents
+  const candidateIntents = responseDetectIntent.output.intents
   if (!mostConfidentIntentSoFar || mostConfidentIntentSoFar.name === 'None') {
     return candidateIntents
   }
@@ -304,16 +307,16 @@ const searchInKnowledge = async (botFlowConf, apiEndPoint, accessToken, messageT
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
     },
-    data: JSON.stringify({
+    body: JSON.stringify({
       query: messageText,
       pageSize: botFlowConf.maxNumOfAnswersReturned,
       sortBy: 'ConfidenceScore'
     })
   }
   debug(`Request for search knowledge: ${JSON.stringify(reqOptionSearchKnowledgeConfig, null, 2)}`)
-  const responseSearchKnowledge = await axiosWithCustomError(reqOptionSearchKnowledgeConfig, 'Request for search knowledge failed')
+  const responseSearchKnowledge = await fetchWithCustomError(reqOptionSearchKnowledgeConfig, 'Request for search knowledge failed')
 
-  const candidateIntents = responseSearchKnowledge.data.results.map(knowledge => (
+  const candidateIntents = responseSearchKnowledge.results.map(knowledge => (
     {
       probability: knowledge.confidence,
       name: knowledge.document.title
@@ -342,20 +345,20 @@ const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, 
       }
     }
     debug(`Request for message details: ${JSON.stringify(reqOptionMessageDetails, null, 2)}`)
-    const responseMessageDetails = await axiosWithCustomError(reqOptionMessageDetails, 'Request for message details failed')
+    const responseMessageDetails = await fetchWithCustomError(reqOptionMessageDetails, 'Request for message details failed')
 
     const reqOptionConversation = {
       method: 'get',
-      url: `${apiEndPoint}/api/v2/conversations/${responseMessageDetails.data.conversationId}`,
+      url: `${apiEndPoint}/api/v2/conversations/${responseMessageDetails.conversationId}`,
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
       }
     }
     debug(`Request for conversation: ${JSON.stringify(reqOptionConversation, null, 2)}`)
-    const responseConversation = await axiosWithCustomError(reqOptionConversation, 'Request for conversation failed')
+    const responseConversation = await fetchWithCustomError(reqOptionConversation, 'Request for conversation failed')
 
-    const participant = _.find(responseConversation.data.participants, p => !_.isNil(p.attributes[botFlowNameField]))
+    const participant = _.find(responseConversation.participants, p => !_.isNil(p.attributes[botFlowNameField]))
     botFlowName = participant && participant.attributes[botFlowNameField]
   }
 

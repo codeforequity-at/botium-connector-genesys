@@ -1,7 +1,6 @@
 const path = require('path')
 const util = require('util')
 const { v4: uuidv4 } = require('uuid')
-const axios = require('axios')
 const WebSocket = require('ws')
 const _ = require('lodash')
 const Queue = require('better-queue')
@@ -233,7 +232,7 @@ const _getAttachmentId = async (connector, media) => {
     // getAttachmentId function steps in order:
     // 1. onAttachment
     // 2. listen on message where class is GenerateUrlError (reject) or PresignedUrlResponse
-    // 3. Upload filedata with axios request
+    // 3. Upload filedata with fetch request
     // 4. Listen on message where class is UploadFailureEvent (reject) or UploadSuccessEvent (resolve)
     const onAttachmentData = {
       action: 'onAttachment',
@@ -264,9 +263,18 @@ const _getAttachmentId = async (connector, media) => {
             method: 'put',
             url: messageData.body.url,
             headers: Object.assign({}, messageData.body.headers, { 'Content-Type': 'text/plain' }),
-            data: media.buffer
+            body: media.buffer
           }
-          await axios(requestOptions)
+          const response = await fetch(requestOptions.url, {
+            method: requestOptions.method,
+            headers: requestOptions.headers,
+            body: requestOptions.body
+          })
+          if (!response.ok) {
+            const errorDetails = await response.text()
+            throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorDetails}`)
+          }
+          await response.json()
         } catch (e) {
           reject(e)
         }
