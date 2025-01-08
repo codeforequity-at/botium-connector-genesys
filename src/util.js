@@ -1,5 +1,6 @@
 const { UrlsByRegion } = require('./constants')
 const _ = require('lodash')
+const debug = require('debug')('botium-connector-genesys')
 
 const getAccessToken = async (awsRegion, clientId, clientSecret) => {
   try {
@@ -13,6 +14,7 @@ const getAccessToken = async (awsRegion, clientId, clientSecret) => {
       },
       body: JSON.stringify({ grant_type: 'client_credentials' })
     }
+    debug(`Request access token: ${JSON.stringify(requestOptions, null, 2)}`)
     const authResponse = await fetch(requestOptions.url, {
       method: requestOptions.method,
       headers: requestOptions.headers,
