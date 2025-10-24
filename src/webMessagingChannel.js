@@ -17,6 +17,10 @@ const Validate = async (connector) => {
   if (!connector.wsEndpoint) {
     throw new Error(`No websocket address found for '${connector.caps[Capabilities.GENESYS_AWS_REGION]}' aws region.`)
   }
+  if (!!connector.caps[Capabilities.GENESYS_RICH_CONTENT_SUPPORT] === true) {
+    if (!connector.caps[Capabilities.GENESYS_CLIENT_ID]) throw new Error('GENESYS_CLIENT_ID capability required for rich content support')
+    if (!connector.caps[Capabilities.GENESYS_CLIENT_SECRET]) throw new Error('GENESYS_CLIENT_SECRET capability required for rich content support')
+  }
   if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
     if (!connector.caps[Capabilities.GENESYS_CLIENT_ID]) throw new Error('GENESYS_CLIENT_ID capability required for NLP analytics')
     if (!connector.caps[Capabilities.GENESYS_CLIENT_SECRET]) throw new Error('GENESYS_CLIENT_SECRET capability required for NLP analytics')
@@ -124,11 +128,34 @@ const Start = async (connector) => {
         }
         const mapButton = (b) => ({
           text: b.text,
-          payload: mapButtonPayload(b.payload) || null
+          payload: b.payload || b.uri ? mapButtonPayload(b.payload || b.uri) : null
         })
-        const mapMedia = (m) => ({
-          mediaUri: m.url,
-          mimeType: m.mime || 'application/unknown'
+        const mapMedia = async (m) => {
+          if (m.url.startsWith('https://api.mypurecloud.com/api/v2/downloads')) {
+            try {
+              connector.view.botium.accessToken = await getAccessToken(connector.caps[Capabilities.GENESYS_AWS_REGION], connector.caps[Capabilities.GENESYS_CLIENT_ID], connector.caps[Capabilities.GENESYS_CLIENT_SECRET])
+              const { base64, mimeType } = await downloadImage(m.url, connector.view.botium.accessToken)
+              return {
+                mediaUri: base64,
+                mimeType: mimeType
+              }
+            } catch (e) {
+              debug(`Error occured during media download: ${e}`)
+              return {
+                mediaUri: m.url,
+                mimeType: m.mime || 'application/unknown'
+              }
+            }
+          }
+          return {
+            mediaUri: m.url,
+            mimeType: m.mime || 'application/unknown'
+          }
+        }
+        const mapCard = async (c) => ({
+          text: c.title,
+          content: c.description,
+          media: c.imageUrl || c.url || c.image ? [await mapMedia({ url: c.imageUrl || c.url || c.image })] : null
         })
 
         const botMsg = {
@@ -148,7 +175,29 @@ const Start = async (connector) => {
             if (richContent.contentType === 'QuickReply') {
               botMsg.buttons.push(mapButton(richContent.quickReply))
             } else if (richContent.contentType === 'Attachment') {
-              botMsg.media.push(mapMedia(richContent.attachment))
+              botMsg.media.push(await mapMedia(richContent.attachment))
+            } else if (richContent.contentType === 'Card') {
+              const botiumCard = await mapCard(richContent.card)
+              if (richContent.card && richContent.card.actions && richContent.card.actions.length > 0) {
+                botiumCard.buttons = []
+                for (const button of richContent.card.actions) {
+                  botiumCard.buttons.push(mapButton(button))
+                }
+              }
+              botMsg.cards.push(botiumCard)
+            } else if (richContent.contentType === 'Carousel') {
+              if (richContent.carousel?.cards && richContent.carousel.cards.length > 0) {
+                for (const card of richContent.carousel.cards) {
+                  const botiumCard = await mapCard(card)
+                  if (card && card.actions && card.actions.length > 0) {
+                    botiumCard.buttons = []
+                    for (const button of card.actions) {
+                      botiumCard.buttons.push(mapButton(button))
+                    }
+                  }
+                  botMsg.cards.push(botiumCard)
+                }
+              }
             } else {
               debug('Not Supported rich content type!')
             }
@@ -281,6 +330,21 @@ const _getAttachmentId = async (connector, media) => {
       }
     })
   })
+}
+
+const downloadImage = async (downloadUri, accessToken) => {
+  const resp = await fetch(downloadUri, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` }
+  })
+  if (!resp.ok) throw new Error(`Download failed: ${resp.status} ${resp.statusText}`)
+
+  const mimeType = resp.headers.get('content-type') || 'application/unknown'
+  const arrayBuffer = await resp.arrayBuffer()
+  const buffer = Buffer.from(arrayBuffer)
+  const rawBase64 = buffer.toString('base64')
+  const dataUri = `data:${mimeType};base64,${rawBase64}`
+  return { base64: dataUri, mimeType }
 }
 
 module.exports = {
