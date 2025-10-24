@@ -128,7 +128,7 @@ const Start = async (connector) => {
         }
         const mapButton = (b) => ({
           text: b.text,
-          payload: b.payload || b.uri ? mapButtonPayload(b.payload || b.uri) : null
+          payload: b.payload || b.url ? mapButtonPayload(b.payload || b.url) : null
         })
         const mapMedia = async (m) => {
           if (m.url.startsWith('https://api.mypurecloud.com/api/v2/downloads')) {
