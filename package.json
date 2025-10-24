@@ -1,6 +1,6 @@
 {
   "name": "botium-connector-genesys",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Botium Connector for Genesys",
   "main": "dist/botium-connector-genesys-cjs.js",
   "module": "dist/botium-connector-genesys-es.js",
@@ -52,6 +52,6 @@
     "ws": "^7.5.9"
   },
   "peerDependencies": {
-    "botium-core": ">= 1.13.0"
+    "botium-core": "^1.15.6"
   }
 }

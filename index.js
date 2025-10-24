@@ -96,6 +96,12 @@ module.exports = {
         required: false
       },
       {
+        name: 'GENESYS_RICH_CONTENT_SUPPORT',
+        label: 'Enable Rich Content Support',
+        type: 'boolean',
+        required: false
+      },
+      {
         name: 'GENESYS_INBOUND_MESSAGE_FLOW_NAME',
         label: 'Inbound Message Flow Name',
         type: 'string',
