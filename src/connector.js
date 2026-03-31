@@ -1,7 +1,10 @@
-const debug = require('debug')('botium-connector-genesys')
-const { Capabilities } = require('./constants')
-const openMessaging = require('./openMessagingChannel')
-const webMessaging = require('./webMessagingChannel')
+import createDebug from 'debug'
+import { Capabilities } from './constants.js'
+import * as openMessaging from './openMessagingChannel.js'
+import * as webMessaging from './webMessagingChannel.js'
+
+const debug = createDebug('botium-connector-genesys')
+
 const MessagingChannelTypes = {
   OPEN_MESSAGING: 'OPEN_MESSAGING',
   WEB_MESSAGING: 'WEB_MESSAGING'
@@ -82,4 +85,4 @@ class BotiumConnectorGenesys {
   }
 }
 
-module.exports = BotiumConnectorGenesys
+export default BotiumConnectorGenesys

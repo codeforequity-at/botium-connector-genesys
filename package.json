@@ -2,12 +2,22 @@
   "name": "botium-connector-genesys",
   "version": "0.0.9",
   "description": "Botium Connector for Genesys",
-  "main": "dist/botium-connector-genesys-cjs.js",
+  "type": "module",
+  "main": "dist/botium-connector-genesys-cjs.cjs",
   "module": "dist/botium-connector-genesys-es.js",
+  "exports": {
+    ".": {
+      "import": "./dist/botium-connector-genesys-es.js",
+      "require": "./dist/botium-connector-genesys-cjs.cjs",
+      "default": "./dist/botium-connector-genesys-cjs.cjs"
+    }
+  },
   "scripts": {
-    "build": "npm run eslint && rollup -c && cp logo.png dist",
-    "eslint": "eslint index.js src/*.js",
-    "eslint-fix": "eslint --fix index.js src/*.js",
+    "build": "rollup -c && cp logo.png dist",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build",
+    "eslint": "eslint index.js src/**/*.js",
+    "eslint-fix": "eslint --fix index.js src/**/*.js",
     "test": "mocha test/unittest/**/*spec.js",
     "test-nightly": "mocha test/nightly/**/*spec.js"
   },
@@ -18,10 +28,6 @@
   },
   "homepage": "https://www.botium.ai",
   "devDependencies": {
-    "@babel/core": "^7.6.2",
-    "@babel/node": "^7.6.2",
-    "@babel/plugin-transform-runtime": "^7.6.2",
-    "@babel/preset-env": "^7.6.2",
     "chai": "^4.3.7",
     "delay": "^5.0.0",
     "dotenv": "^16.0.3",
@@ -35,13 +41,9 @@
     "mocha": "^10.2.0",
     "nock": "v14.0.0-beta.19",
     "rollup": "^1.21.2",
-    "rollup-plugin-babel": "^4.3.3",
-    "rollup-plugin-commonjs": "^10.1.0",
-    "rollup-plugin-json": "^4.0.0",
-    "rollup-plugin-node-resolve": "^5.2.0"
+    "rollup-plugin-json": "^4.0.0"
   },
   "dependencies": {
-    "@babel/runtime": "^7.6.2",
     "better-queue": "^3.8.12",
     "debug": "^4.1.1",
     "lodash": "^4.17.15",

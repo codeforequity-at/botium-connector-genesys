@@ -1,4 +1,4 @@
-const Capabilities = {
+export const Capabilities = {
   GENESYS_MESSAGING_CHANNEL: 'GENESYS_MESSAGING_CHANNEL',
   GENESYS_DEPLOYMENT_ID: 'GENESYS_DEPLOYMENT_ID',
   GENESYS_AWS_REGION: 'GENESYS_AWS_REGION',
@@ -13,7 +13,7 @@ const Capabilities = {
   GENESYS_BOT_FLOW_ATTRIBUTE_NAME: 'GENESYS_BOT_FLOW_ATTRIBUTE_NAME'
 }
 
-const UrlsByRegion = {
+export const UrlsByRegion = {
   'us-east-1': {
     websocket: 'wss://webmessaging.mypurecloud.com/v1',
     auth: 'https://login.mypurecloud.com',
@@ -73,9 +73,4 @@ const UrlsByRegion = {
     auth: 'https://login.sae1.pure.cloud',
     api: 'https://api.sae1.pure.cloud'
   }
-}
-
-module.exports = {
-  Capabilities,
-  UrlsByRegion
 }

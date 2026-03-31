@@ -1,15 +1,17 @@
-const path = require('path')
-const util = require('util')
-const { v4: uuidv4 } = require('uuid')
-const WebSocket = require('ws')
-const _ = require('lodash')
-const Queue = require('better-queue')
-const debug = require('debug')('botium-connector-genesys-web-messaging')
-const { Capabilities, UrlsByRegion } = require('./constants')
-const { detectNlpData, getBotFlowsConfiguration } = require('./intents')
-const { getAccessToken } = require('./util')
+import path from 'path'
+import util from 'util'
+import { v4 as uuidv4 } from 'uuid'
+import WebSocket from 'ws'
+import _ from 'lodash'
+import Queue from 'better-queue'
+import createDebug from 'debug'
+import { Capabilities, UrlsByRegion } from './constants.js'
+import { detectNlpData, getBotFlowsConfiguration } from './intents.js'
+import { getAccessToken } from './util.js'
 
-const Validate = async (connector) => {
+const debug = createDebug('botium-connector-genesys-web-messaging')
+
+export const Validate = async (connector) => {
   if (!connector.caps[Capabilities.GENESYS_DEPLOYMENT_ID]) throw new Error('GENESYS_DEPLOYMENT_ID capability required')
   if (!connector.caps[Capabilities.GENESYS_AWS_REGION]) throw new Error('GENESYS_AWS_REGION capability required')
 
@@ -36,11 +38,11 @@ const Validate = async (connector) => {
   }
 }
 
-const Build = async (connector) => {
+export const Build = async (connector) => {
 
 }
 
-const Start = async (connector) => {
+export const Start = async (connector) => {
   connector.view = {
     container: connector,
     context: {},
@@ -214,7 +216,7 @@ const Start = async (connector) => {
   })
 }
 
-const UserSays = async (connector, msg) => {
+export const UserSays = async (connector, msg) => {
   const messageData = {
     action: 'onMessage',
     token: connector.view.botium.conversationId
@@ -269,20 +271,15 @@ const UserSays = async (connector, msg) => {
   connector.ws.send(JSON.stringify(messageData))
 }
 
-const Stop = async (connector) => {
+export const Stop = async (connector) => {
   connector.ws.close()
 }
 
-const Clean = async (connector) => {
+export const Clean = async (connector) => {
 }
 
 const _getAttachmentId = async (connector, media) => {
   return new Promise((resolve, reject) => {
-    // getAttachmentId function steps in order:
-    // 1. onAttachment
-    // 2. listen on message where class is GenerateUrlError (reject) or PresignedUrlResponse
-    // 3. Upload filedata with fetch request
-    // 4. Listen on message where class is UploadFailureEvent (reject) or UploadSuccessEvent (resolve)
     const onAttachmentData = {
       action: 'onAttachment',
       fileName: path.basename(media.mediaUri),
@@ -345,13 +342,4 @@ const downloadImage = async (downloadUri, accessToken) => {
   const rawBase64 = buffer.toString('base64')
   const dataUri = `data:${mimeType};base64,${rawBase64}`
   return { base64: dataUri, mimeType }
-}
-
-module.exports = {
-  Validate,
-  Build,
-  Start,
-  UserSays,
-  Stop,
-  Clean
 }

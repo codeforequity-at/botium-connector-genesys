@@ -1,8 +1,10 @@
-const { UrlsByRegion } = require('./constants')
-const _ = require('lodash')
-const debug = require('debug')('botium-connector-genesys')
+import _ from 'lodash'
+import createDebug from 'debug'
+import { UrlsByRegion } from './constants.js'
 
-const getAccessToken = async (awsRegion, clientId, clientSecret) => {
+const debug = createDebug('botium-connector-genesys')
+
+export const getAccessToken = async (awsRegion, clientId, clientSecret) => {
   try {
     const params = new URLSearchParams()
     params.append('grant_type', 'client_credentials')
@@ -33,8 +35,4 @@ const getAccessToken = async (awsRegion, clientId, clientSecret) => {
   } catch (err) {
     throw new Error(`Failed to get access token: ${err.message}`)
   }
-}
-
-module.exports = {
-  getAccessToken
 }

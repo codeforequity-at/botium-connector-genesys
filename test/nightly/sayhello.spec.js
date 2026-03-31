@@ -1,7 +1,9 @@
-require('dotenv').config()
-const delay = require('delay')
-const assert = require('chai').assert
-const BotiumConnectorGenesys = require('../../src/connector')
+import dotenv from 'dotenv'
+dotenv.config()
+import delay from 'delay'
+import { assert } from 'chai'
+import BotiumConnectorGenesys from '../../src/connector.js'
+
 const caps = {}
 
 describe('sayhello', function () {
