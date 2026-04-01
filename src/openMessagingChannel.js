@@ -1,14 +1,18 @@
-const util = require('util')
-const _ = require('lodash')
-const randomize = require('randomatic')
-const debug = require('debug')('botium-connector-genesys-open-messaging')
-const SimpleRestContainer = require('botium-core/src/containers/plugins/SimpleRestContainer')
-const { Capabilities: CoreCapabilities } = require('botium-core')
-const { Capabilities, UrlsByRegion } = require('./constants')
-const { getAccessToken } = require('./util')
-const { getBotFlowsConfiguration, detectNlpData } = require('./intents')
+import util from 'util'
+import _ from 'lodash'
+import randomize from 'randomatic'
+import createDebug from 'debug'
+import botiumCore from 'botium-core'
+import { Capabilities, UrlsByRegion } from './constants.js'
+import { getAccessToken } from './util.js'
+import { getBotFlowsConfiguration, detectNlpData } from './intents.js'
 
-const Validate = async (connector) => {
+const debug = createDebug('botium-connector-genesys-open-messaging')
+
+const SimpleRestContainer = botiumCore.Lib.SimpleRestContainer
+const CoreCapabilities = botiumCore.Capabilities
+
+export const Validate = async (connector) => {
   if (!connector.caps[Capabilities.GENESYS_CLIENT_ID]) throw new Error('GENESYS_CLIENT_ID capability required')
   if (!connector.caps[Capabilities.GENESYS_CLIENT_SECRET]) throw new Error('GENESYS_CLIENT_SECRET capability required')
   if (!connector.caps[Capabilities.GENESYS_OPEN_MESSAGING_INTEGRATION_ID]) throw new Error('GENESYS_OPEN_MESSAGING_INTEGRATION_ID capability required')
@@ -69,7 +73,6 @@ const Validate = async (connector) => {
           }
         }
 
-        // Only text based communication is supported by open messaging channel
         body.type = 'Text'
         body.text = msg.messageText
         requestOptions.body = body
@@ -115,31 +118,22 @@ const Validate = async (connector) => {
   return connector.delegateContainer.Validate()
 }
 
-const Build = async (connector) => {
+export const Build = async (connector) => {
   await connector.delegateContainer.Build()
 }
 
-const Start = async (connector) => {
+export const Start = async (connector) => {
   await connector.delegateContainer.Start()
 }
 
-const UserSays = async (connector, msg) => {
+export const UserSays = async (connector, msg) => {
   await connector.delegateContainer.UserSays(msg)
 }
 
-const Stop = async (connector) => {
+export const Stop = async (connector) => {
   await connector.delegateContainer.Stop()
 }
 
-const Clean = async (connector) => {
+export const Clean = async (connector) => {
   await connector.delegateContainer.Clean()
-}
-
-module.exports = {
-  Validate,
-  Build,
-  Start,
-  UserSays,
-  Stop,
-  Clean
 }

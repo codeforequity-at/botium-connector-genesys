@@ -1,14 +1,18 @@
-const BotiumConnectorGenesys = require('./src/connector')
-const { importHandler, importArgs, getBotFlows } = require('./src/intents')
-const fs = require('fs')
-const path = require('path')
-const { getAccessToken } = require('./src/util')
-const { Capabilities, UrlsByRegion } = require('./src/constants')
-const _ = require('lodash')
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import _ from 'lodash'
+import BotiumConnectorGenesys from './src/connector.js'
+import { importHandler, importArgs, getBotFlows } from './src/intents.js'
+import { getAccessToken } from './src/util.js'
+import { Capabilities, UrlsByRegion } from './src/constants.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 const logo = fs.readFileSync(path.join(__dirname, 'logo.png')).toString('base64')
 
-module.exports = {
+export default {
   PluginVersion: 1,
   PluginClass: BotiumConnectorGenesys,
   Import: {

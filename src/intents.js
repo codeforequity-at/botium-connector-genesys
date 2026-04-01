@@ -1,7 +1,10 @@
-const debug = require('debug')('botium-connector-genesys-intents')
-const { getAccessToken } = require('./util')
-const { Capabilities, UrlsByRegion } = require('./constants')
-const _ = require('lodash')
+import createDebug from 'debug'
+import _ from 'lodash'
+import { getAccessToken } from './util.js'
+import { Capabilities, UrlsByRegion } from './constants.js'
+
+const debug = createDebug('botium-connector-genesys-intents')
+
 const INCOMPREHENSION_INTENT = 'None'
 const INCOMPREHENSION_INTENT_STRUCT = {
   name: INCOMPREHENSION_INTENT,
@@ -159,7 +162,7 @@ const _importIt = async ({ caps, inboundMessageFlowName, botFlowId, clientId, cl
  * @param accessToken
  * @returns {Promise<[]>}
  */
-const getBotFlows = async (inboundMessageFlowName, apiEndPoint, accessToken) => {
+export const getBotFlows = async (inboundMessageFlowName, apiEndPoint, accessToken) => {
   const reqOptionInboundMessageFlow = {
     method: 'get',
     url: `${apiEndPoint}/api/v2/flows${inboundMessageFlowName ? `?name=${inboundMessageFlowName}` : ''}`,
@@ -246,7 +249,7 @@ const importGenesysBotFlowIntents = async ({ caps, buildconvos, inboundMessageFl
   }
 }
 
-const getBotFlowsConfiguration = async (inboundMessageFlowName, apiEndPoint, accessToken) => {
+export const getBotFlowsConfiguration = async (inboundMessageFlowName, apiEndPoint, accessToken) => {
   const botFlows = await getBotFlows(inboundMessageFlowName, apiEndPoint, accessToken)
   const botFlowsConfiguration = []
   for (const botFlow of botFlows) {
@@ -333,7 +336,7 @@ const searchInKnowledge = async (botFlowConf, apiEndPoint, accessToken, messageT
   return []
 }
 
-const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, messageText, messageId, botFlowNameField }) => {
+export const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, messageText, messageId, botFlowNameField }) => {
   let botFlowName
   if (messageId && botFlowNameField) {
     const reqOptionMessageDetails = {
@@ -376,7 +379,6 @@ const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, 
           intents = foundIntents
         }
       } else {
-        // The responseBias either 'knowledge' or 'neutral'. In these cases knowledge has priority
         const foundIntents = await searchInKnowledge(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
         if (foundIntents.length > 0) {
           intents = foundIntents
@@ -421,46 +423,42 @@ const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, 
   return nlp
 }
 
-module.exports = {
-  importHandler: ({ caps, buildconvos, inboundMessageFlowName, botFlowId, clientId, clientSecret, language, ...rest } = {}) => importGenesysBotFlowIntents({
-    caps,
-    buildconvos,
-    inboundMessageFlowName,
-    botFlowId,
-    clientId,
-    clientSecret,
-    language,
-    ...rest
-  }),
-  importArgs: {
-    caps: {
-      describe: 'Capabilities',
-      type: 'json',
-      skipCli: true
-    },
-    buildconvos: {
-      describe: 'Build convo files for intent assertions (otherwise, just write utterances files)',
-      type: 'boolean',
-      default: false
-    },
-    inboundMessageFlowName: {
-      describe: 'Inbound Message flow name from genesys architect view',
-      type: 'string'
-    },
-    clientId: {
-      describe: 'Client ID from Genesys OAuth integration',
-      type: 'string'
-    },
-    clientSecret: {
-      describe: 'Client Secret from Genesys OAuth integration',
-      type: 'string'
-    },
-    language: {
-      describe: 'Language (like en-us)',
-      type: 'string'
-    }
+export const importHandler = ({ caps, buildconvos, inboundMessageFlowName, botFlowId, clientId, clientSecret, language, ...rest } = {}) => importGenesysBotFlowIntents({
+  caps,
+  buildconvos,
+  inboundMessageFlowName,
+  botFlowId,
+  clientId,
+  clientSecret,
+  language,
+  ...rest
+})
+
+export const importArgs = {
+  caps: {
+    describe: 'Capabilities',
+    type: 'json',
+    skipCli: true
   },
-  getBotFlowsConfiguration,
-  detectNlpData,
-  getBotFlows
+  buildconvos: {
+    describe: 'Build convo files for intent assertions (otherwise, just write utterances files)',
+    type: 'boolean',
+    default: false
+  },
+  inboundMessageFlowName: {
+    describe: 'Inbound Message flow name from genesys architect view',
+    type: 'string'
+  },
+  clientId: {
+    describe: 'Client ID from Genesys OAuth integration',
+    type: 'string'
+  },
+  clientSecret: {
+    describe: 'Client Secret from Genesys OAuth integration',
+    type: 'string'
+  },
+  language: {
+    describe: 'Language (like en-us)',
+    type: 'string'
+  }
 }

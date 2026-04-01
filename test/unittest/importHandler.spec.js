@@ -1,10 +1,12 @@
-require('dotenv').config()
-const nock = require('nock')
-const assert = require('chai').assert
-const { importHandler } = require('../../src/intents')
-const { UrlsByRegion, Capabilities } = require('../../src/constants')
-const _ = require('lodash')
-const { getAccessToken } = require('../../src/util')
+import dotenv from 'dotenv'
+dotenv.config()
+import nock from 'nock'
+import { assert } from 'chai'
+import _ from 'lodash'
+import { importHandler } from '../../src/intents.js'
+import { UrlsByRegion, Capabilities } from '../../src/constants.js'
+import { getAccessToken } from '../../src/util.js'
+
 const caps = {
   GENESYS_AWS_REGION: 'us-east-1',
   GENESYS_CLIENT_ID: '5305cdc8-5ef9-49b9-8cbe-95e87bd3c42d',

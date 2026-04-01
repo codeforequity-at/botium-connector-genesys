@@ -1,6 +1,8 @@
-require('dotenv').config()
-const assert = require('chai').assert
-const { importHandler } = require('../../src/intents')
+import dotenv from 'dotenv'
+dotenv.config()
+import { assert } from 'chai'
+import { importHandler } from '../../src/intents.js'
+
 const caps = {}
 
 describe('importhandler', function () {
