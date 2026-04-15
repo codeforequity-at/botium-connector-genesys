@@ -8,7 +8,9 @@ const { getAccessToken } = require('../../src/util')
 const caps = {
   GENESYS_AWS_REGION: 'us-east-1',
   GENESYS_CLIENT_ID: '5305cdc8-5ef9-49b9-8cbe-95e87bd3c42d',
-  GENESYS_CLIENT_SECRET: 'vL9kEoHLCb6AWmby5xpHrbAKviL-Lzu6WCiBUZTtmAU'
+  GENESYS_CLIENT_SECRET: 'vL9kEoHLCb6AWmby5xpHrbAKviL-Lzu6WCiBUZTtmAU',
+  GENESYS_INBOUND_MESSAGE_FLOW_NAME: 'InboundFlowMock',
+  GENESYS_INBOUND_FLOW_TYPE: 'INBOUNDSHORTMESSAGE'
 }
 
 const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = true, botFlow = true, nluDomain = true }) => {
@@ -48,6 +50,7 @@ const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = tru
 
   nock(apiEndPoint)
     .get('/api/v2/flows')
+    .query({ name: caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME, type: caps.GENESYS_INBOUND_FLOW_TYPE })
     .reply(flowListStatus, flowListData)
     .persist()
 

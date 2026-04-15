@@ -36,7 +36,8 @@ module.exports = {
         required: true,
         choices: [
           { key: 'WEB_MESSAGING', name: 'Web messaging (websocket)' },
-          { key: 'OPEN_MESSAGING', name: 'Open messaging (webhook)' }
+          { key: 'OPEN_MESSAGING', name: 'Open messaging (webhook)' },
+          { key: 'NLP_ONLY', name: 'NLP Only' }
         ]
       },
       {
@@ -102,8 +103,24 @@ module.exports = {
         required: false
       },
       {
+        name: 'GENESYS_INBOUND_FLOW_TYPE',
+        label: 'Inbound Flow Type',
+        type: 'choice',
+        required: false,
+        choices: [
+          { key: 'INBOUNDSHORTMESSAGE', name: 'Inbound Message' },
+          { key: 'INBOUNDCALL', name: 'Inbound Call' }
+        ]
+      },
+      {
         name: 'GENESYS_INBOUND_MESSAGE_FLOW_NAME',
         label: 'Inbound Message Flow Name',
+        type: 'string',
+        required: false
+      },
+      {
+        name: 'GENESYS_INBOUND_CALL_FLOW_NAME',
+        label: 'Inbound Call Flow Name',
         type: 'string',
         required: false
       },
@@ -113,12 +130,15 @@ module.exports = {
         type: 'query',
         required: false,
         query: async (caps) => {
-          if (caps && caps[Capabilities.GENESYS_AWS_REGION] && caps.GENESYS_CLIENT_ID && caps.GENESYS_CLIENT_SECRET && caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME) {
+          if (caps && caps[Capabilities.GENESYS_AWS_REGION] && caps.GENESYS_CLIENT_ID && caps.GENESYS_CLIENT_SECRET && (caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME || caps.GENESYS_INBOUND_CALL_FLOW_NAME) && caps.GENESYS_INBOUND_FLOW_TYPE) {
             try {
               const accessToken = await getAccessToken(caps[Capabilities.GENESYS_AWS_REGION], caps[Capabilities.GENESYS_CLIENT_ID], caps[Capabilities.GENESYS_CLIENT_SECRET])
               const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+              const inboundFlowName = caps.GENESYS_INBOUND_FLOW_TYPE === 'INBOUNDCALL'
+                ? caps.GENESYS_INBOUND_CALL_FLOW_NAME
+                : caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME
 
-              const botFlows = await getBotFlows(caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME, apiEndPoint, accessToken)
+              const botFlows = await getBotFlows(inboundFlowName, apiEndPoint, accessToken, caps.GENESYS_INBOUND_FLOW_TYPE)
               return botFlows.map(b => ({ name: b.name, key: b.id }))
             } catch (err) {
               throw new Error(`Genesys BotFlows Query failed: ${err.message}`)
