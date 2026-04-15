@@ -47,24 +47,24 @@ const Start = async (connector) => {
 }
 
 const UserSays = async (connector, msg) => {
-    let botMsg = {
-        sender: 'bot',
-        sourceData: {
-          request: {
-            messageText: msg.messageText,
-            buttons: msg.buttons,
-            media: msg.media
-          }
-        }
+  const botMsg = {
+    sender: 'bot',
+    sourceData: {
+      request: {
+        messageText: msg.messageText,
+        buttons: msg.buttons,
+        media: msg.media
       }
+    }
+  }
 
-    botMsg.nlp = await detectNlpData({
-      botFlowsConfiguration: connector.botFlowsConfiguration,
-      apiEndPoint: connector.apiEndpoint,
-      accessToken: connector.view.botium.accessToken,
-      messageText: msg.messageText,
-      botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME]
-    })
+  botMsg.nlp = await detectNlpData({
+    botFlowsConfiguration: connector.botFlowsConfiguration,
+    apiEndPoint: connector.apiEndpoint,
+    accessToken: connector.view.botium.accessToken,
+    messageText: msg.messageText,
+    botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME]
+  })
   connector.queueBotSays(botMsg)
 }
 
