@@ -131,7 +131,7 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
   }
 }
 
-const _importIt = async ({ caps, inboundMessageFlowName, botFlowId, clientId, clientSecret, language }) => {
+const _importIt = async ({ caps, inboundFlowType, inboundFlowName, botFlowId, clientId, clientSecret, language }) => {
   const accessToken = await getAccessToken(caps[Capabilities.GENESYS_AWS_REGION], clientId || caps[Capabilities.GENESYS_CLIENT_ID], clientSecret || caps[Capabilities.GENESYS_CLIENT_SECRET])
   const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
 
@@ -140,7 +140,7 @@ const _importIt = async ({ caps, inboundMessageFlowName, botFlowId, clientId, cl
   if (botFlowId) {
     await _updateUtterancesByBotFlow(apiEndPoint, accessToken, botFlowId, chatbotData, utterances, language)
   } else {
-    const botFlows = await getBotFlows(inboundMessageFlowName || caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME], apiEndPoint, accessToken)
+    const botFlows = await getBotFlows(inboundFlowName, apiEndPoint, accessToken, inboundFlowType)
     if (botFlows.length === 0) {
       return { chatbotData: {}, rawUtterances: {} }
     }
@@ -154,15 +154,19 @@ const _importIt = async ({ caps, inboundMessageFlowName, botFlowId, clientId, cl
 
 /**
  *
- * @param inboundMessageFlowName
+ * @param inboundFlowName
  * @param apiEndPoint
  * @param accessToken
+ * @param inboundFlowType
  * @returns {Promise<[]>}
  */
-const getBotFlows = async (inboundMessageFlowName, apiEndPoint, accessToken) => {
+const getBotFlows = async (inboundFlowName, apiEndPoint, accessToken, inboundFlowType = 'INBOUNDSHORTMESSAGE') => {
+  if (!inboundFlowName) {
+    throw new Error('Inbound flow name is required')
+  }
   const reqOptionInboundMessageFlow = {
     method: 'get',
-    url: `${apiEndPoint}/api/v2/flows${inboundMessageFlowName ? `?name=${inboundMessageFlowName}` : ''}`,
+    url: `${apiEndPoint}/api/v2/flows?name=${encodeURIComponent(inboundFlowName)}&type=${encodeURIComponent(inboundFlowType)}`,
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
@@ -170,11 +174,15 @@ const getBotFlows = async (inboundMessageFlowName, apiEndPoint, accessToken) => 
   }
   debug(`Request by name for inbound message flow: ${JSON.stringify(reqOptionInboundMessageFlow, null, 2)}`)
   const responseInboundMessageFlow = await fetchWithCustomError(reqOptionInboundMessageFlow, 'Request by name for inbound message flow')
-  const inboundMessageFlow = responseInboundMessageFlow.entities.find(e => e.type === 'INBOUNDSHORTMESSAGE')
-  if (!inboundMessageFlow) {
-    throw new Error(`Inbound Message flow not found by '${inboundMessageFlowName}' name`)
+  const inboundMessageFlows = responseInboundMessageFlow.entities
+  if (inboundMessageFlows.length === 0) {
+    throw new Error(`Inbound flow not found by name '${inboundFlowName}' and type '${inboundFlowType}'`)
+  }
+  if (inboundMessageFlows.length > 1) {
+    throw new Error(`Multiple inbound flows found by name '${inboundFlowName}' and type '${inboundFlowType}'`)
   }
 
+  const inboundMessageFlow = inboundMessageFlows[0]
   const reqOptionInboundMessageFlowConfig = {
     method: 'get',
     url: `${apiEndPoint}/api/v2/flows/${inboundMessageFlow.id}/latestconfiguration`,
@@ -199,16 +207,16 @@ const getBotFlows = async (inboundMessageFlowName, apiEndPoint, accessToken) => 
  *
  * @param caps
  * @param buildconvos
- * @param inboundMessageFlowName
+ * @param inboundFlowName
  * @param botFlowId
  * @param clientId
  * @param clientSecret
  * @param language - in "en-us" format, or null for all
  * @returns {Promise<{utterances: *, convos: *}>}
  */
-const importGenesysBotFlowIntents = async ({ caps, buildconvos, inboundMessageFlowName, botFlowId, clientId, clientSecret, language }) => {
+const importGenesysBotFlowIntents = async ({ caps, buildconvos, inboundFlowType, inboundFlowName, botFlowId, clientId, clientSecret, language }) => {
   try {
-    const downloadResult = await _importIt({ caps, inboundMessageFlowName, botFlowId, clientId, clientSecret, language })
+    const downloadResult = await _importIt({ caps, inboundFlowType, inboundFlowName, botFlowId, clientId, clientSecret, language })
     const utterances = Object.values(downloadResult.rawUtterances)
     const convos = []
     if (buildconvos) {
@@ -246,8 +254,8 @@ const importGenesysBotFlowIntents = async ({ caps, buildconvos, inboundMessageFl
   }
 }
 
-const getBotFlowsConfiguration = async (inboundMessageFlowName, apiEndPoint, accessToken) => {
-  const botFlows = await getBotFlows(inboundMessageFlowName, apiEndPoint, accessToken)
+const getBotFlowsConfiguration = async (inboundFlowName, apiEndPoint, accessToken, inboundFlowType = 'INBOUNDSHORTMESSAGE') => {
+  const botFlows = await getBotFlows(inboundFlowName, apiEndPoint, accessToken, inboundFlowType)
   const botFlowsConfiguration = []
   for (const botFlow of botFlows) {
     const reqOptionBotFlowConfig = {
@@ -421,17 +429,34 @@ const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, 
   return nlp
 }
 
+const resolveImportFlowParams = ({ caps, inboundFlowType, inboundFlowName }) => {
+  const flowType = inboundFlowType ?? _.get(caps, Capabilities.GENESYS_INBOUND_FLOW_TYPE) ?? 'INBOUNDSHORTMESSAGE'
+  const fromCapsMessage = _.get(caps, Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME)
+  const fromCapsCall = _.get(caps, Capabilities.GENESYS_INBOUND_CALL_FLOW_NAME)
+  let flowName = inboundFlowName
+  if (!flowName) {
+    flowName = flowType === 'INBOUNDCALL'
+      ? (fromCapsCall || fromCapsMessage)
+      : (fromCapsMessage || fromCapsCall)
+  }
+  return { inboundFlowType: flowType, inboundFlowName: flowName }
+}
+
 module.exports = {
-  importHandler: ({ caps, buildconvos, inboundMessageFlowName, botFlowId, clientId, clientSecret, language, ...rest } = {}) => importGenesysBotFlowIntents({
-    caps,
-    buildconvos,
-    inboundMessageFlowName,
-    botFlowId,
-    clientId,
-    clientSecret,
-    language,
-    ...rest
-  }),
+  importHandler: ({ caps, buildconvos, inboundFlowType, inboundFlowName, botFlowId, clientId, clientSecret, language, ...rest } = {}) => {
+    const resolved = resolveImportFlowParams({ caps, inboundFlowType, inboundFlowName })
+    return importGenesysBotFlowIntents({
+      caps,
+      buildconvos,
+      inboundFlowType: resolved.inboundFlowType,
+      inboundFlowName: resolved.inboundFlowName,
+      botFlowId,
+      clientId,
+      clientSecret,
+      language,
+      ...rest
+    })
+  },
   importArgs: {
     caps: {
       describe: 'Capabilities',
@@ -443,8 +468,17 @@ module.exports = {
       type: 'boolean',
       default: false
     },
-    inboundMessageFlowName: {
-      describe: 'Inbound Message flow name from genesys architect view',
+    inboundFlowType: {
+      describe: 'Inbound flow type',
+      type: 'choice',
+      required: false,
+      choices: [
+        { key: 'INBOUNDSHORTMESSAGE', name: 'Inbound Message' },
+        { key: 'INBOUNDCALL', name: 'Inbound Call' }
+      ]
+    },
+    inboundFlowName: {
+      describe: 'Inbound flow name from genesys architect view',
       type: 'string'
     },
     clientId: {

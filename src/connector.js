@@ -2,9 +2,11 @@ const debug = require('debug')('botium-connector-genesys')
 const { Capabilities } = require('./constants')
 const openMessaging = require('./openMessagingChannel')
 const webMessaging = require('./webMessagingChannel')
+const nlpOnly = require('./nlpOnly')
 const MessagingChannelTypes = {
   OPEN_MESSAGING: 'OPEN_MESSAGING',
-  WEB_MESSAGING: 'WEB_MESSAGING'
+  WEB_MESSAGING: 'WEB_MESSAGING',
+  NLP_ONLY: 'NLP_ONLY'
 }
 
 class BotiumConnectorGenesys {
@@ -26,6 +28,8 @@ class BotiumConnectorGenesys {
       return openMessaging.Validate(this)
     } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.WEB_MESSAGING) {
       return webMessaging.Validate(this)
+    } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.NLP_ONLY) {
+      return nlpOnly.Validate(this)
     } else {
       throw new Error(`Not supported messaging channel: '${this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL]}'`)
     }
@@ -36,6 +40,8 @@ class BotiumConnectorGenesys {
       await openMessaging.Build(this)
     } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.WEB_MESSAGING) {
       await webMessaging.Build(this)
+    } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.NLP_ONLY) {
+      await nlpOnly.Build(this)
     } else {
       throw new Error(`Not supported messaging channel: '${this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL]}'`)
     }
@@ -46,6 +52,8 @@ class BotiumConnectorGenesys {
       await openMessaging.Start(this)
     } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.WEB_MESSAGING) {
       await webMessaging.Start(this)
+    } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.NLP_ONLY) {
+      await nlpOnly.Start(this)
     } else {
       throw new Error(`Not supported messaging channel: '${this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL]}'`)
     }
@@ -56,6 +64,8 @@ class BotiumConnectorGenesys {
       await openMessaging.UserSays(this, msg)
     } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.WEB_MESSAGING) {
       await webMessaging.UserSays(this, msg)
+    } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.NLP_ONLY) {
+      await nlpOnly.UserSays(this, msg)
     } else {
       throw new Error(`Not supported messaging channel: '${this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL]}'`)
     }
@@ -66,6 +76,8 @@ class BotiumConnectorGenesys {
       await openMessaging.Stop(this)
     } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.WEB_MESSAGING) {
       await webMessaging.Stop(this)
+    } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.NLP_ONLY) {
+      await nlpOnly.Stop(this)
     } else {
       throw new Error(`Not supported messaging channel: '${this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL]}'`)
     }
@@ -76,6 +88,8 @@ class BotiumConnectorGenesys {
       await openMessaging.Clean(this)
     } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.WEB_MESSAGING) {
       await webMessaging.Clean(this)
+    } else if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.NLP_ONLY) {
+      await nlpOnly.Clean(this)
     } else {
       throw new Error(`Not supported messaging channel: '${this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL]}'`)
     }
