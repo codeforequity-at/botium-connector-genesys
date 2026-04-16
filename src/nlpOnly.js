@@ -65,7 +65,7 @@ const UserSays = async (connector, msg) => {
     messageText: msg.messageText,
     botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME]
   })
-  connector.queueBotSays(botMsg)
+  setTimeout(() => connector.queueBotSays(botMsg), 0)
 }
 
 const Stop = async (connector) => {
