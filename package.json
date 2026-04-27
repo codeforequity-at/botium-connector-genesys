@@ -1,6 +1,6 @@
 {
   "name": "botium-connector-genesys",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Botium Connector for Genesys",
   "type": "module",
   "main": "dist/botium-connector-genesys-cjs.cjs",
