@@ -198,6 +198,40 @@ You can choose between Web Messaging (WEB_MESSAGING) - websocket and Open Messag
 #### GENESYS_NLP_ANALYTICS
 You can enable NLP analytics by this boolean flag. (false by default)
 
+### Genesys OAuth permissions for NLP analytics and NLP only mode
+
+For `GENESYS_NLP_ANALYTICS` and NLP only mode the connector uses the Genesys Cloud Platform API to read the Architect flow configuration and to call the NLU/Knowledge APIs. In Genesys, add the following permissions to the role assigned to the OAuth client credentials. Genesys also requires matching OAuth scopes; the read-only scopes are enough for these calls.
+
+Minimum permissions for intent detection without a Genesys Knowledge Base:
+
+| Endpoint used by the connector | Required permission | OAuth scope |
+| --- | --- | --- |
+| `GET /api/v2/flows` | `architect:flow:view` | `architect:readonly` |
+| `GET /api/v2/flows/{flowId}/latestconfiguration` | `architect:flow:view` | `architect:readonly` |
+| `POST /api/v2/languageunderstanding/domains/{domainId}/versions/{domainVersionId}/detect` | one of `languageUnderstanding:nluDomainVersion:view` or `dialog:botVersion:view` | one of `language-understanding:readonly` or `dialog:readonly` |
+
+The intent import handler additionally reads the NLU domain version, so it uses the same NLU permission and scope for:
+
+| Endpoint used by the connector | Required permission | OAuth scope |
+| --- | --- | --- |
+| `GET /api/v2/languageunderstanding/domains/{domainId}/versions/{domainVersionId}` | one of `languageUnderstanding:nluDomainVersion:view` or `dialog:botVersion:view` | one of `language-understanding:readonly` or `dialog:readonly` |
+
+If the bot flow is configured with a Genesys Knowledge Base, add these permissions as well:
+
+| Endpoint used by the connector | Required permission | OAuth scope |
+| --- | --- | --- |
+| `POST /api/v2/knowledge/knowledgebases/{knowledgeBaseId}/documents/search` | `knowledge:knowledgebase:search` | `knowledge:readonly` |
+| `GET /api/v2/knowledge/knowledgebases/{knowledgeBaseId}/documents` | `knowledge:document:view` | `knowledge:readonly` |
+
+When `detectNlpData` is called with a Genesys message id and `GENESYS_BOT_FLOW_ATTRIBUTE_NAME`, the connector also reads the message and conversation to select the matching bot flow. Add these permissions only for that setup:
+
+| Endpoint used by the connector | Required permission | OAuth scope |
+| --- | --- | --- |
+| `GET /api/v2/conversations/messages/{messageId}/details` | one of `conversation:message:view` or `conversation:webmessaging:view` | `conversations:readonly` |
+| `GET /api/v2/conversations/{conversationId}` | `conversation:communication:view` | `conversations:readonly` |
+
+You can verify the current permission and scope requirements in the [Genesys Cloud API Explorer](https://developer.genesys.cloud/devapps/api-explorer) by opening each endpoint and checking the "Required Permissions" section.
+
 #### GENESYS_INBOUND_MESSAGE_FLOW_NAME
 When you turn on `GENESYS_NLP_ANALYTICS`, then it's required to specify the inbound message flow name.
 

@@ -9,6 +9,8 @@ const INCOMPREHENSION_INTENT_STRUCT = {
   confidence: 1
 }
 
+const botFlowNames = (botFlows) => (_.isArray(botFlows) ? botFlows.map(botFlow => botFlow.name || botFlow.id).join(', ') : '')
+
 const fetchWithCustomError = async (options, msg) => {
   try {
     const reponse = await fetch(options.url, {
@@ -53,6 +55,7 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
   const responseNluDomain = await fetchWithCustomError(reqOptionNluDomain, ' Request the latest NLU domain version failed')
 
   if (!language || (language && responseNluDomain.language && responseNluDomain.language.toLowerCase() === language.toLowerCase())) {
+    let importedUtteranceCount = 0
     for (const intent of responseNluDomain.intents) {
       if (_.isArray(intent.utterances)) {
         const intentName = intent.name
@@ -69,11 +72,15 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
                 utterances[intentName].utterances.push(uttText)
               }
             }
+            importedUtteranceCount++
           }
         }
       }
     }
     chatbotData.push(responseNluDomain)
+    debug(`Imported ${importedUtteranceCount} utterances from NLU domain '${domainId}' version '${domainVersionId}' for bot flow '${botFlowId}'`)
+  } else {
+    debug(`Skipping NLU domain '${domainId}' version '${domainVersionId}' for bot flow '${botFlowId}' because language '${responseNluDomain.language}' does not match requested language '${language}'`)
   }
 
   const knowledgeBaseId = _.get(responseBotFlowConfig, 'knowledgeSettings.knowledgeBaseId')
@@ -90,6 +97,7 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
     const responseKnowledgeBase = await fetchWithCustomError(reqOptionKnowledgeBase, ' Request knowledge base failed')
 
     const getAllDocumentsRecursive = async (responseKnowledgeBase) => {
+      let importedAlternativeCount = 0
       for (const entity of responseKnowledgeBase.entities) {
         if (_.isArray(entity.alternatives)) {
           const intentName = entity.title
@@ -106,11 +114,13 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
                   utterances[intentName].utterances.push(uttText)
                 }
               }
+              importedAlternativeCount++
             }
           }
         }
       }
       chatbotData.push(responseKnowledgeBase)
+      debug(`Imported ${importedAlternativeCount} knowledge alternatives from knowledge base '${knowledgeBaseId}' for bot flow '${botFlowId}'`)
 
       if (responseKnowledgeBase.nextUri) {
         const reqOptionNextKnowledgeBase = {
@@ -128,6 +138,8 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
     }
 
     await getAllDocumentsRecursive(responseKnowledgeBase)
+  } else {
+    debug(`No knowledge base configured for bot flow '${botFlowId}', skipping knowledge import`)
   }
 }
 
@@ -142,8 +154,10 @@ const _importIt = async ({ caps, inboundFlowType, inboundFlowName, botFlowId, cl
   } else {
     const botFlows = await getBotFlows(inboundFlowName, apiEndPoint, accessToken, inboundFlowType)
     if (botFlows.length === 0) {
+      debug(`No bot flows found in inbound flow '${inboundFlowName}' and type '${inboundFlowType}', returning empty import result`)
       return { chatbotData: {}, rawUtterances: {} }
     }
+    debug(`Importing intents from bot flows: ${botFlowNames(botFlows)}`)
     for (const botFlow of botFlows) {
       await _updateUtterancesByBotFlow(apiEndPoint, accessToken, botFlow.id, chatbotData, utterances, language)
     }
@@ -200,6 +214,7 @@ const getBotFlows = async (inboundFlowName, apiEndPoint, accessToken, inboundFlo
   botFlows.push(...(_.get(responseInboundMessageFlowConfig, 'manifest.botFlow')
     ? _.get(responseInboundMessageFlowConfig, 'manifest.botFlow').map(bot => ({ id: bot.id, name: bot.name })) : []))
 
+  debug(`Found ${botFlows.length} bot flows in inbound flow '${inboundFlowName}' and type '${inboundFlowType}': ${botFlowNames(botFlows)}`)
   return botFlows
 }
 
@@ -256,6 +271,9 @@ const importGenesysBotFlowIntents = async ({ caps, buildconvos, inboundFlowType,
 
 const getBotFlowsConfiguration = async (inboundFlowName, apiEndPoint, accessToken, inboundFlowType = 'INBOUNDSHORTMESSAGE') => {
   const botFlows = await getBotFlows(inboundFlowName, apiEndPoint, accessToken, inboundFlowType)
+  if (botFlows.length === 0) {
+    throw new Error(`No bot flows found in inbound flow '${inboundFlowName}' and type '${inboundFlowType}'`)
+  }
   const botFlowsConfiguration = []
   for (const botFlow of botFlows) {
     const reqOptionBotFlowConfig = {
@@ -341,7 +359,13 @@ const searchInKnowledge = async (botFlowConf, apiEndPoint, accessToken, messageT
   return []
 }
 
-const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, messageText, messageId, botFlowNameField }) => {
+const detectNlpData = async (params) => {
+  const { botFlowsConfiguration, apiEndPoint, accessToken, messageText, messageId, botFlowNameField } = params
+  debug(`Detecting NLP data with params: ${JSON.stringify(params, null, 2)}`)
+  if (!_.isArray(botFlowsConfiguration) || botFlowsConfiguration.length === 0) {
+    throw new Error('No bot flow configuration available for NLP detection')
+  }
+
   let botFlowName
   if (messageId && botFlowNameField) {
     const reqOptionMessageDetails = {
@@ -368,12 +392,18 @@ const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, 
 
     const participant = _.find(responseConversation.participants, p => !_.isNil(p.attributes[botFlowNameField]))
     botFlowName = participant && participant.attributes[botFlowNameField]
+    if (botFlowName) {
+      debug(`Resolved bot flow '${botFlowName}' from conversation attribute '${botFlowNameField}'`)
+    } else {
+      debug(`Conversation attribute '${botFlowNameField}' was not found, detecting NLP data using configured bot flows`)
+    }
   }
 
   let intents = []
   const detectNlpDataByFlow = async (botFlowConf) => {
     if (botFlowConf.knowledgeBaseId && messageText && messageText.length >= 3) {
       const responseBias = botFlowConf.responseBias
+      debug(`Detecting NLP data in bot flow '${botFlowConf.name}' with response bias '${responseBias}' and knowledge base '${botFlowConf.knowledgeBaseId}'`)
       if (responseBias === 'intents') {
         const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
         if (detectedIntents.length > 0) {
@@ -395,6 +425,11 @@ const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, 
         }
       }
     } else {
+      if (botFlowConf.knowledgeBaseId && (!messageText || messageText.length < 3)) {
+        debug(`Skipping knowledge search for bot flow '${botFlowConf.name}' because message text is shorter than 3 characters`)
+      } else if (!botFlowConf.knowledgeBaseId) {
+        debug(`No knowledge base configured for bot flow '${botFlowConf.name}', using intent detection only`)
+      }
       const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
       if (detectedIntents.length > 0) {
         intents = detectedIntents
@@ -402,9 +437,16 @@ const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, 
     }
   }
 
-  if (botFlowName && _.some(botFlowsConfiguration, bfConfig => bfConfig.name === botFlowName)) {
-    await detectNlpDataByFlow(_.find(botFlowsConfiguration, bfConfig => bfConfig.name === botFlowName))
+  const matchingBotFlowConfiguration = botFlowName && _.find(botFlowsConfiguration, bfConfig => bfConfig.name === botFlowName)
+  if (matchingBotFlowConfiguration) {
+    debug(`Detecting NLP data using bot flow '${botFlowName}'`)
+    await detectNlpDataByFlow(matchingBotFlowConfiguration)
   } else {
+    if (botFlowName) {
+      debug(`Bot flow '${botFlowName}' from conversation attribute '${botFlowNameField}' was not found in configured bot flows: ${botFlowsConfiguration.map(bfConfig => bfConfig.name).join(', ')}`)
+    } else {
+      debug(`Detecting NLP data using all configured bot flows: ${botFlowsConfiguration.map(bfConfig => bfConfig.name).join(', ')}`)
+    }
     for (const botFlowConf of botFlowsConfiguration) {
       await detectNlpDataByFlow(botFlowConf)
     }
@@ -425,6 +467,8 @@ const detectNlpData = async ({ botFlowsConfiguration, apiEndPoint, accessToken, 
         confidence: e.probability
       })) : []
     }
+  } else {
+    debug('No intents detected, returning empty NLP data')
   }
   return nlp
 }
@@ -439,6 +483,7 @@ const resolveImportFlowParams = ({ caps, inboundFlowType, inboundFlowName }) => 
       ? (fromCapsCall || fromCapsMessage)
       : (fromCapsMessage || fromCapsCall)
   }
+  debug(`Resolved import flow params: inboundFlowType '${flowType}', inboundFlowName '${flowName || 'not provided'}'`)
   return { inboundFlowType: flowType, inboundFlowName: flowName }
 }
 

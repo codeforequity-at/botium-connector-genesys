@@ -1,7 +1,7 @@
 require('dotenv').config()
 const nock = require('nock')
 const assert = require('chai').assert
-const { importHandler } = require('../../src/intents')
+const { importHandler, detectNlpData, getBotFlowsConfiguration } = require('../../src/intents')
 const { UrlsByRegion, Capabilities } = require('../../src/constants')
 const _ = require('lodash')
 const { getAccessToken } = require('../../src/util')
@@ -13,7 +13,7 @@ const caps = {
   GENESYS_INBOUND_FLOW_TYPE: 'INBOUNDSHORTMESSAGE'
 }
 
-const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = true, botFlow = true, nluDomain = true }) => {
+const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = true, botFlow = true, nluDomain = true, emptyBotFlows = false }) => {
   const authEndpoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.auth`)
   const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
 
@@ -64,6 +64,11 @@ const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = tru
           name: digitalBotFlowId
         }
       ]
+    }
+  }
+  if (emptyBotFlows) {
+    inboundMessageFlowData = {
+      manifest: {}
     }
   }
   if (!inboundMessageFlow) {
@@ -196,6 +201,32 @@ describe('importhandler', function () {
       assert.fail('it should have failed')
     } catch (err) {
       assert.equal(err.message, 'Import failed: Request the latest configuration for botflow failed: HTTP error! Status: 400, Message: {}')
+    }
+  })
+
+  it('should fail when inbound flow has no bot flows', async function () {
+    mockGenesysApi({ emptyBotFlows: true })
+    const accessToken = await getAccessToken(caps[Capabilities.GENESYS_AWS_REGION], caps[Capabilities.GENESYS_CLIENT_ID], caps[Capabilities.GENESYS_CLIENT_SECRET])
+    assert.equal(accessToken, 'AccessToken123')
+    try {
+      await getBotFlowsConfiguration(caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME, _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`), accessToken, caps.GENESYS_INBOUND_FLOW_TYPE)
+      assert.fail('it should have failed')
+    } catch (err) {
+      assert.equal(err.message, `No bot flows found in inbound flow '${caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME}' and type '${caps.GENESYS_INBOUND_FLOW_TYPE}'`)
+    }
+  })
+
+  it('should fail nlp detection when no bot flow configuration is available', async function () {
+    try {
+      await detectNlpData({
+        botFlowsConfiguration: [],
+        apiEndPoint: 'https://api.example.com',
+        accessToken: 'AccessToken123',
+        messageText: 'Tell me a joke'
+      })
+      assert.fail('it should have failed')
+    } catch (err) {
+      assert.equal(err.message, 'No bot flow configuration available for NLP detection')
     }
   })
 })
