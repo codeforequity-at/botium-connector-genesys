@@ -8,6 +8,18 @@ const INCOMPREHENSION_INTENT_STRUCT = {
   incomprehension: true,
   confidence: 1
 }
+const BOT_FLOW_MANIFEST_KEYS = ['digitalBotFlow', 'botFlow']
+const FLOW_REFERENCE_MANIFEST_KEYS = [
+  'inboundCallFlow',
+  'inboundShortMessageFlow',
+  'commonModuleFlow',
+  'inQueueCallFlow',
+  'inQueueShortMessageFlow',
+  'inboundEmailFlow',
+  'inQueueEmailFlow',
+  'secureCallFlow'
+]
+const MAX_FLOW_REFERENCE_DEPTH = 10
 
 const botFlowNames = (botFlows) => (_.isArray(botFlows) ? botFlows.map(botFlow => botFlow.name || botFlow.id).join(', ') : '')
 
@@ -26,6 +38,77 @@ const fetchWithCustomError = async (options, msg) => {
     return reponse.json()
   } catch (err) {
     throw new Error(`${msg}: ${err.message}`)
+  }
+}
+
+const fetchLatestFlowConfiguration = async (apiEndPoint, accessToken, flowId) => {
+  const reqOptionFlowConfig = {
+    method: 'get',
+    url: `${apiEndPoint}/api/v2/flows/${flowId}/latestconfiguration`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+  }
+  debug(`Request the latest configuration for flow: ${JSON.stringify(reqOptionFlowConfig, null, 2)}`)
+  return fetchWithCustomError(reqOptionFlowConfig, 'Request the latest configuration for botflow failed')
+}
+
+const collectBotFlowsFromManifest = (manifest) => BOT_FLOW_MANIFEST_KEYS.reduce((botFlows, manifestKey) => {
+  const manifestBotFlows = _.get(manifest, manifestKey)
+  if (_.isArray(manifestBotFlows)) {
+    botFlows.push(...manifestBotFlows
+      .filter(bot => bot.id)
+      .map(bot => ({ id: bot.id, name: bot.name })))
+  }
+  return botFlows
+}, [])
+
+const collectBotFlowsRecursive = async ({ apiEndPoint, accessToken, flowId, flowName, depth, visitedFlowIds, botFlowsById }) => {
+  if (!flowId) {
+    debug(`Skipping referenced flow without id at depth ${depth}`)
+    return
+  }
+  if (visitedFlowIds.has(flowId)) {
+    debug(`Skipping already visited flow '${flowName || flowId}' (${flowId})`)
+    return
+  }
+  if (depth > MAX_FLOW_REFERENCE_DEPTH) {
+    debug(`Skipping flow '${flowName || flowId}' (${flowId}) because maximum flow reference depth ${MAX_FLOW_REFERENCE_DEPTH} was reached`)
+    return
+  }
+
+  visitedFlowIds.add(flowId)
+  debug(`Inspecting flow '${flowName || flowId}' (${flowId}) at reference depth ${depth}`)
+  const responseFlowConfig = await fetchLatestFlowConfiguration(apiEndPoint, accessToken, flowId)
+  const manifest = _.get(responseFlowConfig, 'manifest', {})
+
+  const botFlows = collectBotFlowsFromManifest(manifest)
+  for (const botFlow of botFlows) {
+    if (!botFlowsById.has(botFlow.id)) {
+      botFlowsById.set(botFlow.id, botFlow)
+      debug(`Found bot flow '${botFlow.name || botFlow.id}' (${botFlow.id}) in flow '${flowName || flowId}'`)
+    } else {
+      debug(`Skipping duplicate bot flow '${botFlow.name || botFlow.id}' (${botFlow.id})`)
+    }
+  }
+
+  for (const manifestKey of FLOW_REFERENCE_MANIFEST_KEYS) {
+    const referencedFlows = _.get(manifest, manifestKey)
+    if (_.isArray(referencedFlows)) {
+      for (const referencedFlow of referencedFlows) {
+        debug(`Following ${manifestKey} reference '${referencedFlow.name || referencedFlow.id}' (${referencedFlow.id}) from flow '${flowName || flowId}'`)
+        await collectBotFlowsRecursive({
+          apiEndPoint,
+          accessToken,
+          flowId: referencedFlow.id,
+          flowName: referencedFlow.name,
+          depth: depth + 1,
+          visitedFlowIds,
+          botFlowsById
+        })
+      }
+    }
   }
 }
 
@@ -197,23 +280,18 @@ const getBotFlows = async (inboundFlowName, apiEndPoint, accessToken, inboundFlo
   }
 
   const inboundMessageFlow = inboundMessageFlows[0]
-  const reqOptionInboundMessageFlowConfig = {
-    method: 'get',
-    url: `${apiEndPoint}/api/v2/flows/${inboundMessageFlow.id}/latestconfiguration`,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    }
-  }
-  debug(`Request the latest configuration for botflow: ${JSON.stringify(reqOptionInboundMessageFlowConfig, null, 2)}`)
-  const responseInboundMessageFlowConfig = await fetchWithCustomError(reqOptionInboundMessageFlowConfig, 'Request the latest configuration for botflow failed')
+  const botFlowsById = new Map()
+  await collectBotFlowsRecursive({
+    apiEndPoint,
+    accessToken,
+    flowId: inboundMessageFlow.id,
+    flowName: inboundFlowName,
+    depth: 0,
+    visitedFlowIds: new Set(),
+    botFlowsById
+  })
 
-  const botFlows = []
-  botFlows.push(...(_.get(responseInboundMessageFlowConfig, 'manifest.digitalBotFlow')
-    ? _.get(responseInboundMessageFlowConfig, 'manifest.digitalBotFlow').map(bot => ({ id: bot.id, name: bot.name })) : []))
-  botFlows.push(...(_.get(responseInboundMessageFlowConfig, 'manifest.botFlow')
-    ? _.get(responseInboundMessageFlowConfig, 'manifest.botFlow').map(bot => ({ id: bot.id, name: bot.name })) : []))
-
+  const botFlows = Array.from(botFlowsById.values())
   debug(`Found ${botFlows.length} bot flows in inbound flow '${inboundFlowName}' and type '${inboundFlowType}': ${botFlowNames(botFlows)}`)
   return botFlows
 }

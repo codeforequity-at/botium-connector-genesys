@@ -1,7 +1,7 @@
 require('dotenv').config()
 const nock = require('nock')
 const assert = require('chai').assert
-const { importHandler, detectNlpData, getBotFlowsConfiguration } = require('../../src/intents')
+const { importHandler, detectNlpData, getBotFlows, getBotFlowsConfiguration } = require('../../src/intents')
 const { UrlsByRegion, Capabilities } = require('../../src/constants')
 const _ = require('lodash')
 const { getAccessToken } = require('../../src/util')
@@ -145,6 +145,26 @@ const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = tru
     .persist()
 }
 
+const mockFlowList = ({ apiEndPoint, flowName, flowType, flowId }) => {
+  nock(apiEndPoint)
+    .get('/api/v2/flows')
+    .query({ name: flowName, type: flowType })
+    .reply(200, {
+      entities: [
+        {
+          id: flowId,
+          type: flowType
+        }
+      ]
+    })
+}
+
+const mockFlowConfiguration = ({ apiEndPoint, flowId, manifest }) => {
+  nock(apiEndPoint)
+    .get(`/api/v2/flows/${flowId}/latestconfiguration`)
+    .reply(200, { manifest })
+}
+
 describe('importhandler', function () {
   before(async function () {
     Object.keys(process.env).filter(e => e.startsWith('BOTIUM_')).forEach((element) => {
@@ -168,6 +188,208 @@ describe('importhandler', function () {
     const utterance = result.utterances[0]
     assert.equal(utterance.name, 'intent01')
     assert.isTrue(utterance.utterances.includes('Tell me a joke'))
+  })
+
+  it('should find direct bot flows', async function () {
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+    mockFlowList({
+      apiEndPoint,
+      flowName: caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME,
+      flowType: caps.GENESYS_INBOUND_FLOW_TYPE,
+      flowId: 'inboundMessage01'
+    })
+    mockFlowConfiguration({
+      apiEndPoint,
+      flowId: 'inboundMessage01',
+      manifest: {
+        digitalBotFlow: [
+          {
+            id: 'digitalBotFlow01',
+            name: 'Digital Bot Flow'
+          }
+        ],
+        botFlow: [
+          {
+            id: 'botFlow01',
+            name: 'Bot Flow'
+          }
+        ]
+      }
+    })
+
+    const result = await getBotFlows(caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME, apiEndPoint, 'AccessToken123', caps.GENESYS_INBOUND_FLOW_TYPE)
+    assert.deepEqual(result, [
+      {
+        id: 'digitalBotFlow01',
+        name: 'Digital Bot Flow'
+      },
+      {
+        id: 'botFlow01',
+        name: 'Bot Flow'
+      }
+    ])
+  })
+
+  it('should find bot flows in referenced inbound call flows', async function () {
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+    const flowName = 'InboundCallFlowMock'
+    const flowType = 'INBOUNDCALL'
+    mockFlowList({
+      apiEndPoint,
+      flowName,
+      flowType,
+      flowId: 'inboundCall01'
+    })
+    mockFlowConfiguration({
+      apiEndPoint,
+      flowId: 'inboundCall01',
+      manifest: {
+        inboundCallFlow: [
+          {
+            id: 'intentSelectionFlow01',
+            name: 'Intent Selection Flow'
+          }
+        ]
+      }
+    })
+    mockFlowConfiguration({
+      apiEndPoint,
+      flowId: 'intentSelectionFlow01',
+      manifest: {
+        botFlow: [
+          {
+            id: 'voiceBotFlow01',
+            name: 'Voice Bot Flow'
+          }
+        ]
+      }
+    })
+
+    const result = await getBotFlows(flowName, apiEndPoint, 'AccessToken123', flowType)
+    assert.deepEqual(result, [
+      {
+        id: 'voiceBotFlow01',
+        name: 'Voice Bot Flow'
+      }
+    ])
+  })
+
+  it('should find bot flows in referenced common module flows', async function () {
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+    mockFlowList({
+      apiEndPoint,
+      flowName: caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME,
+      flowType: caps.GENESYS_INBOUND_FLOW_TYPE,
+      flowId: 'inboundMessage01'
+    })
+    mockFlowConfiguration({
+      apiEndPoint,
+      flowId: 'inboundMessage01',
+      manifest: {
+        commonModuleFlow: [
+          {
+            id: 'commonModuleFlow01',
+            name: 'Common Module Flow'
+          }
+        ]
+      }
+    })
+    mockFlowConfiguration({
+      apiEndPoint,
+      flowId: 'commonModuleFlow01',
+      manifest: {
+        digitalBotFlow: [
+          {
+            id: 'digitalBotFlow01',
+            name: 'Digital Bot Flow'
+          }
+        ]
+      }
+    })
+
+    const result = await getBotFlows(caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME, apiEndPoint, 'AccessToken123', caps.GENESYS_INBOUND_FLOW_TYPE)
+    assert.deepEqual(result, [
+      {
+        id: 'digitalBotFlow01',
+        name: 'Digital Bot Flow'
+      }
+    ])
+  })
+
+  it('should avoid cycles and dedupe bot flows', async function () {
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+    mockFlowList({
+      apiEndPoint,
+      flowName: caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME,
+      flowType: caps.GENESYS_INBOUND_FLOW_TYPE,
+      flowId: 'inboundMessage01'
+    })
+    mockFlowConfiguration({
+      apiEndPoint,
+      flowId: 'inboundMessage01',
+      manifest: {
+        inboundShortMessageFlow: [
+          {
+            id: 'childFlow01',
+            name: 'Child Flow 1'
+          },
+          {
+            id: 'childFlow02',
+            name: 'Child Flow 2'
+          }
+        ],
+        commonModuleFlow: [
+          {
+            id: 'childFlow01',
+            name: 'Child Flow 1'
+          }
+        ]
+      }
+    })
+    mockFlowConfiguration({
+      apiEndPoint,
+      flowId: 'childFlow01',
+      manifest: {
+        botFlow: [
+          {
+            id: 'botFlow01',
+            name: 'Bot Flow'
+          }
+        ],
+        inboundShortMessageFlow: [
+          {
+            id: 'inboundMessage01',
+            name: 'Inbound Message Flow'
+          }
+        ]
+      }
+    })
+    mockFlowConfiguration({
+      apiEndPoint,
+      flowId: 'childFlow02',
+      manifest: {
+        botFlow: [
+          {
+            id: 'botFlow01',
+            name: 'Bot Flow'
+          }
+        ],
+        inboundShortMessageFlow: [
+          {
+            id: 'childFlow01',
+            name: 'Child Flow 1'
+          }
+        ]
+      }
+    })
+
+    const result = await getBotFlows(caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME, apiEndPoint, 'AccessToken123', caps.GENESYS_INBOUND_FLOW_TYPE)
+    assert.deepEqual(result, [
+      {
+        id: 'botFlow01',
+        name: 'Bot Flow'
+      }
+    ])
   })
 
   it('should fail at access token', async function () {
