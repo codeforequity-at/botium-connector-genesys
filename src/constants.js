@@ -18,6 +18,7 @@ const Capabilities = {
 }
 
 const DEFAULT_LANGUAGE_ATTRIBUTE_NAME = 'language'
+const DEFAULT_LANGUAGE = 'en-us'
 
 const UrlsByRegion = {
   'us-east-1': {
@@ -84,5 +85,6 @@ const UrlsByRegion = {
 module.exports = {
   Capabilities,
   UrlsByRegion,
-  DEFAULT_LANGUAGE_ATTRIBUTE_NAME
+  DEFAULT_LANGUAGE_ATTRIBUTE_NAME,
+  DEFAULT_LANGUAGE
 }

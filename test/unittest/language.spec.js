@@ -86,8 +86,25 @@ describe('language', function () {
       }))
     })
 
-    it('should send no custom attributes when nothing is configured', async function () {
-      assert.isNull(getCustomAttributes({}))
+    it('should keep the configured custom attributes when the attribute name is blank', async function () {
+      assert.deepEqual(getCustomAttributes({
+        GENESYS_LANGUAGE: 'es-es',
+        GENESYS_LANGUAGE_ATTRIBUTE_NAME: '',
+        GENESYS_CUSTOM_ATTRIBUTES: { department: 'sales' }
+      }), { department: 'sales' })
+    })
+
+    it('should send the default language when no language is configured', async function () {
+      assert.deepEqual(getCustomAttributes({}), { language: 'en-us' })
+      assert.deepEqual(getCustomAttributes({
+        GENESYS_CUSTOM_ATTRIBUTES: { department: 'sales' }
+      }), { department: 'sales', language: 'en-us' })
+    })
+
+    it('should let a configured custom attribute win over the default language', async function () {
+      assert.deepEqual(getCustomAttributes({
+        GENESYS_CUSTOM_ATTRIBUTES: { language: 'es-es' }
+      }), { language: 'es-es' })
     })
   })
 })

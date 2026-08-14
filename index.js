@@ -112,7 +112,7 @@ module.exports = {
       {
         name: 'GENESYS_LANGUAGE_ATTRIBUTE_NAME',
         label: 'Language Custom Attribute Name',
-        description: 'Custom attribute the language is sent in, so an Architect flow reading it as participant data can switch the conversation language. Defaults to "language", leave blank to not send it.',
+        description: 'Custom attribute the language is sent in, so an Architect flow reading it as participant data can switch the conversation language. Defaults to "language", leave blank to not send it. The attribute is sent with every message, falling back to "en-us" when no language is set.',
         type: 'string',
         required: false
       },

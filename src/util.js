@@ -1,4 +1,4 @@
-const { UrlsByRegion, Capabilities, DEFAULT_LANGUAGE_ATTRIBUTE_NAME } = require('./constants')
+const { UrlsByRegion, Capabilities, DEFAULT_LANGUAGE_ATTRIBUTE_NAME, DEFAULT_LANGUAGE } = require('./constants')
 const _ = require('lodash')
 const debug = require('debug')('botium-connector-genesys')
 
@@ -7,17 +7,21 @@ const debug = require('debug')('botium-connector-genesys')
  * flow pick it up with a Get Participant Data action and switch the conversation language with a
  * Set Language action, so a single capability drives both NLU detection and the conversation itself.
  *
+ * The attribute is always sent, defaulting to DEFAULT_LANGUAGE, because a Set Language action fails
+ * on a missing value and the flow then answers nothing at all.
+ *
  * @param caps
  * @returns {object|null} the custom attributes to send, or null when there are none
  */
 const getCustomAttributes = (caps) => {
   const configuredAttributes = caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]
-  const language = caps[Capabilities.GENESYS_LANGUAGE]
+  const configuredLanguage = caps[Capabilities.GENESYS_LANGUAGE]
+  const language = configuredLanguage || DEFAULT_LANGUAGE
   const attributeName = _.isNil(caps[Capabilities.GENESYS_LANGUAGE_ATTRIBUTE_NAME])
     ? DEFAULT_LANGUAGE_ATTRIBUTE_NAME
     : caps[Capabilities.GENESYS_LANGUAGE_ATTRIBUTE_NAME]
 
-  if (!language || !attributeName) {
+  if (!attributeName) {
     return configuredAttributes || null
   }
   if (configuredAttributes && !_.isPlainObject(configuredAttributes)) {
@@ -28,8 +32,8 @@ const getCustomAttributes = (caps) => {
   const customAttributes = Object.assign({}, configuredAttributes)
   if (_.isNil(customAttributes[attributeName])) {
     customAttributes[attributeName] = language
-  } else if (customAttributes[attributeName] !== language) {
-    debug(`Custom attribute '${attributeName}' is set to '${customAttributes[attributeName]}' and takes precedence over GENESYS_LANGUAGE '${language}'`)
+  } else if (configuredLanguage && customAttributes[attributeName] !== configuredLanguage) {
+    debug(`Custom attribute '${attributeName}' is set to '${customAttributes[attributeName]}' and takes precedence over GENESYS_LANGUAGE '${configuredLanguage}'`)
   }
   return customAttributes
 }

@@ -242,11 +242,15 @@ When it is not set, the default language of the bot flow is used.
 Only set this for a multilanguage bot flow, see [Multilanguage bot flows](#multilanguage-bot-flows).
 
 #### GENESYS_LANGUAGE_ATTRIBUTE_NAME
-The custom attribute `GENESYS_LANGUAGE` is sent in, `language` by default. Set it to an empty string 
-to not send the language at all.
+The custom attribute the language is sent in, `language` by default. Set it to an empty string to not 
+send the language at all.
 
 Genesys maps custom attributes to participant data, so an Architect flow can read this attribute and 
 switch the language of the conversation. See [Multilanguage bot flows](#multilanguage-bot-flows).
+
+The attribute is sent with every message, also when `GENESYS_LANGUAGE` is not set, in which case it 
+falls back to `en-us`. This is on purpose: a `Set Language` action in an Architect flow fails when the 
+participant data it reads is missing, and the flow then answers nothing at all.
 
 ### Multilanguage bot flows
 
@@ -275,6 +279,11 @@ language itself:
 * Add a `Get Participant Data` action which reads the `language` attribute into a flow variable
 * Add a `Set Language` action which uses that variable as expression
 * Add the language under `Supported Languages` of every bot flow involved, with trained utterances
+
+The connector always sends the attribute, `en-us` when `GENESYS_LANGUAGE` is not set, so the flow 
+never has to deal with a missing value. If your bot answers in another language by default, set 
+`GENESYS_LANGUAGE` accordingly, or set `GENESYS_LANGUAGE_ATTRIBUTE_NAME` to an empty string to leave 
+the language of the conversation entirely to the flow.
 
 Without these steps the bot keeps answering in its default language, while Botium still reports the 
 intents of the requested language. In that case the NLP analytics of a web messaging or open 
@@ -326,5 +335,6 @@ E.g.:
 }
 ```
 
-When `GENESYS_LANGUAGE` is set, the connector adds it to these attributes under the name configured 
-in `GENESYS_LANGUAGE_ATTRIBUTE_NAME`. An attribute defined here explicitly is never overwritten.
+The connector adds the language to these attributes under the name configured in 
+`GENESYS_LANGUAGE_ATTRIBUTE_NAME`, using `GENESYS_LANGUAGE` or `en-us`. An attribute defined here 
+explicitly is never overwritten.
