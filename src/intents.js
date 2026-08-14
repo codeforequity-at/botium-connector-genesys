@@ -23,6 +23,76 @@ const MAX_FLOW_REFERENCE_DEPTH = 10
 
 const botFlowNames = (botFlows) => (_.isArray(botFlows) ? botFlows.map(botFlow => botFlow.name || botFlow.id).join(', ') : '')
 
+const normalizeLanguage = (language) => {
+  if (!language) {
+    return null
+  }
+  return language.toString().trim().toLowerCase().replace(/_/g, '-')
+}
+
+/**
+ * All languages an NLU domain version can be queried for: its own language plus the languages of
+ * the sibling versions listed in languageVersions.
+ */
+const supportedLanguages = (domainVersion) => {
+  const languages = []
+  const addLanguage = (language) => {
+    const normalized = normalizeLanguage(language)
+    if (normalized && !languages.includes(normalized)) {
+      languages.push(normalized)
+    }
+  }
+  addLanguage(_.get(domainVersion, 'language'))
+  Object.keys(_.get(domainVersion, 'languageVersions') || {}).forEach(language => addLanguage(language))
+  return languages
+}
+
+/**
+ * Genesys keeps one NLU domain version per language and maps them in languageVersions. Returns the
+ * version id serving the requested language, or null when the language is not available.
+ */
+const resolveNluDomainVersionId = ({ domainVersion, domainVersionId, language }) => {
+  const requestedLanguage = normalizeLanguage(language)
+  if (!requestedLanguage) {
+    return domainVersionId
+  }
+
+  const defaultLanguage = normalizeLanguage(_.get(domainVersion, 'language'))
+  if (defaultLanguage === requestedLanguage) {
+    return domainVersionId
+  }
+
+  const languageVersions = _.get(domainVersion, 'languageVersions') || {}
+  const exactMatch = Object.keys(languageVersions).find(key => normalizeLanguage(key) === requestedLanguage)
+  if (exactMatch) {
+    return languageVersions[exactMatch]
+  }
+
+  // Genesys expects full locales like "es-es", accept a bare "es" as well
+  const baseLanguage = requestedLanguage.split('-')[0]
+  if (defaultLanguage && defaultLanguage.split('-')[0] === baseLanguage) {
+    return domainVersionId
+  }
+  const baseMatch = Object.keys(languageVersions).find(key => normalizeLanguage(key).split('-')[0] === baseLanguage)
+  if (baseMatch) {
+    return languageVersions[baseMatch]
+  }
+
+  return null
+}
+
+const supportsLanguage = (botFlowConf, requestedLanguage) => {
+  if (!requestedLanguage) {
+    return true
+  }
+  const languages = _.get(botFlowConf, 'supportedLanguages')
+  // unknown for bot flows without an NLU domain, treated as supported to keep them in the detection
+  if (!_.isArray(languages) || languages.length === 0) {
+    return true
+  }
+  return languages.includes(requestedLanguage)
+}
+
 const fetchWithCustomError = async (options, msg) => {
   try {
     const reponse = await fetch(options.url, {
@@ -52,6 +122,19 @@ const fetchLatestFlowConfiguration = async (apiEndPoint, accessToken, flowId) =>
   }
   debug(`Request the latest configuration for flow: ${JSON.stringify(reqOptionFlowConfig, null, 2)}`)
   return fetchWithCustomError(reqOptionFlowConfig, 'Request the latest configuration for botflow failed')
+}
+
+const fetchNluDomainVersion = async (apiEndPoint, accessToken, domainId, domainVersionId, includeUtterances) => {
+  const reqOptionNluDomain = {
+    method: 'get',
+    url: `${apiEndPoint}/api/v2/languageunderstanding/domains/${domainId}/versions/${domainVersionId}${includeUtterances ? '?includeUtterances=true' : ''}`,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+  }
+  debug(`Request the latest NLU domain version: ${JSON.stringify(reqOptionNluDomain, null, 2)}`)
+  return fetchWithCustomError(reqOptionNluDomain, ' Request the latest NLU domain version failed')
 }
 
 const collectBotFlowsFromManifest = (manifest) => BOT_FLOW_MANIFEST_KEYS.reduce((botFlows, manifestKey) => {
@@ -126,20 +209,22 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
 
   const domainId = _.get(responseBotFlowConfig, 'botFlowSettings.nluDomainId')
   const domainVersionId = _.get(responseBotFlowConfig, 'botFlowSettings.nluDomainVersionId')
-  const reqOptionNluDomain = {
-    method: 'get',
-    url: `${apiEndPoint}/api/v2/languageunderstanding/domains/${domainId}/versions/${domainVersionId}?includeUtterances=true`,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    }
-  }
-  debug(`Request the latest NLU domain version: ${JSON.stringify(reqOptionNluDomain, null, 2)}`)
-  const responseNluDomain = await fetchWithCustomError(reqOptionNluDomain, ' Request the latest NLU domain version failed')
+  const requestedLanguage = normalizeLanguage(language)
+  const defaultNluDomainVersion = await fetchNluDomainVersion(apiEndPoint, accessToken, domainId, domainVersionId, true)
+  const defaultLanguage = normalizeLanguage(defaultNluDomainVersion.language)
+  const availableLanguages = supportedLanguages(defaultNluDomainVersion)
+  const resolvedVersionId = resolveNluDomainVersionId({ domainVersion: defaultNluDomainVersion, domainVersionId, language: requestedLanguage })
 
-  if (!language || (language && responseNluDomain.language && responseNluDomain.language.toLowerCase() === language.toLowerCase())) {
+  let imported = false
+  if (!resolvedVersionId) {
+    debug(`Skipping NLU domain '${domainId}' for bot flow '${botFlowId}' because language '${requestedLanguage}' is not available, supported languages are '${availableLanguages.join(', ')}'`)
+  } else {
+    const responseNluDomain = resolvedVersionId === domainVersionId
+      ? defaultNluDomainVersion
+      : await fetchNluDomainVersion(apiEndPoint, accessToken, domainId, resolvedVersionId, true)
+
     let importedUtteranceCount = 0
-    for (const intent of responseNluDomain.intents) {
+    for (const intent of _.get(responseNluDomain, 'intents') || []) {
       if (_.isArray(intent.utterances)) {
         const intentName = intent.name
         for (const utterance of intent.utterances) {
@@ -161,13 +246,14 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
       }
     }
     chatbotData.push(responseNluDomain)
-    debug(`Imported ${importedUtteranceCount} utterances from NLU domain '${domainId}' version '${domainVersionId}' for bot flow '${botFlowId}'`)
-  } else {
-    debug(`Skipping NLU domain '${domainId}' version '${domainVersionId}' for bot flow '${botFlowId}' because language '${responseNluDomain.language}' does not match requested language '${language}'`)
+    imported = true
+    debug(`Imported ${importedUtteranceCount} utterances from NLU domain '${domainId}' version '${resolvedVersionId}' language '${normalizeLanguage(responseNluDomain.language) || defaultLanguage}' for bot flow '${botFlowId}'`)
   }
 
   const knowledgeBaseId = _.get(responseBotFlowConfig, 'knowledgeSettings.knowledgeBaseId')
-  if (knowledgeBaseId) {
+  if (knowledgeBaseId && requestedLanguage && defaultLanguage && requestedLanguage !== defaultLanguage) {
+    debug(`Skipping knowledge base '${knowledgeBaseId}' for bot flow '${botFlowId}' because the Genesys knowledge API cannot be queried by language and the knowledge base holds the '${defaultLanguage}' content of the bot flow`)
+  } else if (knowledgeBaseId) {
     const reqOptionKnowledgeBase = {
       method: 'get',
       url: `${apiEndPoint}/api/v2/knowledge/knowledgebases/${knowledgeBaseId}/documents`,
@@ -224,16 +310,20 @@ const _updateUtterancesByBotFlow = async (apiEndPoint, accessToken, botFlowId, c
   } else {
     debug(`No knowledge base configured for bot flow '${botFlowId}', skipping knowledge import`)
   }
+
+  return { imported, availableLanguages }
 }
 
 const _importIt = async ({ caps, inboundFlowType, inboundFlowName, botFlowId, clientId, clientSecret, language }) => {
   const accessToken = await getAccessToken(caps[Capabilities.GENESYS_AWS_REGION], clientId || caps[Capabilities.GENESYS_CLIENT_ID], clientSecret || caps[Capabilities.GENESYS_CLIENT_SECRET])
   const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+  const requestedLanguage = normalizeLanguage(language || _.get(caps, Capabilities.GENESYS_LANGUAGE))
 
   const utterances = {}
   const chatbotData = []
+  const importResults = []
   if (botFlowId) {
-    await _updateUtterancesByBotFlow(apiEndPoint, accessToken, botFlowId, chatbotData, utterances, language)
+    importResults.push(await _updateUtterancesByBotFlow(apiEndPoint, accessToken, botFlowId, chatbotData, utterances, requestedLanguage))
   } else {
     const botFlows = await getBotFlows(inboundFlowName, apiEndPoint, accessToken, inboundFlowType)
     if (botFlows.length === 0) {
@@ -242,8 +332,15 @@ const _importIt = async ({ caps, inboundFlowType, inboundFlowName, botFlowId, cl
     }
     debug(`Importing intents from bot flows: ${botFlowNames(botFlows)}`)
     for (const botFlow of botFlows) {
-      await _updateUtterancesByBotFlow(apiEndPoint, accessToken, botFlow.id, chatbotData, utterances, language)
+      importResults.push(await _updateUtterancesByBotFlow(apiEndPoint, accessToken, botFlow.id, chatbotData, utterances, requestedLanguage))
     }
+  }
+
+  if (requestedLanguage && !importResults.some(importResult => importResult.imported)) {
+    const availableLanguages = _.uniq(_.flatten(importResults.map(importResult => importResult.availableLanguages)))
+    throw new Error(availableLanguages.length > 0
+      ? `No NLU domain found for language '${requestedLanguage}', available languages are '${availableLanguages.join(', ')}'`
+      : `No NLU domain found for language '${requestedLanguage}'`)
   }
 
   return { chatbotData: chatbotData.length > 1 ? chatbotData : chatbotData[0], rawUtterances: utterances }
@@ -304,7 +401,7 @@ const getBotFlows = async (inboundFlowName, apiEndPoint, accessToken, inboundFlo
  * @param botFlowId
  * @param clientId
  * @param clientSecret
- * @param language - in "en-us" format, or null for all
+ * @param language - in "en-us" format, or null for the default language of the NLU domain
  * @returns {Promise<{utterances: *, convos: *}>}
  */
 const importGenesysBotFlowIntents = async ({ caps, buildconvos, inboundFlowType, inboundFlowName, botFlowId, clientId, clientSecret, language }) => {
@@ -347,11 +444,21 @@ const importGenesysBotFlowIntents = async ({ caps, buildconvos, inboundFlowType,
   }
 }
 
-const getBotFlowsConfiguration = async (inboundFlowName, apiEndPoint, accessToken, inboundFlowType = 'INBOUNDSHORTMESSAGE') => {
+/**
+ *
+ * @param inboundFlowName
+ * @param apiEndPoint
+ * @param accessToken
+ * @param inboundFlowType
+ * @param language - in "en-us" format, or null to use the default language of each bot flow
+ * @returns {Promise<[]>}
+ */
+const getBotFlowsConfiguration = async ({ inboundFlowName, apiEndPoint, accessToken, inboundFlowType = 'INBOUNDSHORTMESSAGE', language } = {}) => {
   const botFlows = await getBotFlows(inboundFlowName, apiEndPoint, accessToken, inboundFlowType)
   if (botFlows.length === 0) {
     throw new Error(`No bot flows found in inbound flow '${inboundFlowName}' and type '${inboundFlowType}'`)
   }
+  const requestedLanguage = normalizeLanguage(language)
   const botFlowsConfiguration = []
   for (const botFlow of botFlows) {
     const reqOptionBotFlowConfig = {
@@ -365,7 +472,7 @@ const getBotFlowsConfiguration = async (inboundFlowName, apiEndPoint, accessToke
     debug(`Request the latest configuration for botflow: ${JSON.stringify(reqOptionBotFlowConfig, null, 2)}`)
     const responseBotFlowConfig = await fetchWithCustomError(reqOptionBotFlowConfig, 'Request the latest configuration for botflow failed')
 
-    botFlowsConfiguration.push({
+    const botFlowConfiguration = {
       id: botFlow.id,
       name: responseBotFlowConfig.name,
       domainId: _.get(responseBotFlowConfig, 'botFlowSettings.nluDomainId'),
@@ -373,12 +480,35 @@ const getBotFlowsConfiguration = async (inboundFlowName, apiEndPoint, accessToke
       knowledgeBaseId: _.get(responseBotFlowConfig, 'knowledgeSettings.knowledgeBaseId'),
       maxNumOfAnswersReturned: _.get(responseBotFlowConfig, 'knowledgeSettings.maxNumOfAnswersReturned.text') || '3',
       responseBias: _.get(responseBotFlowConfig, 'knowledgeSettings.responseBias.text') || 'neutral'
-    })
+    }
+
+    // only needed to tell apart the languages a bot flow can be asked for, so skipped by default
+    if (requestedLanguage && botFlowConfiguration.domainId && botFlowConfiguration.domainVersionId) {
+      const defaultNluDomainVersion = await fetchNluDomainVersion(apiEndPoint, accessToken, botFlowConfiguration.domainId, botFlowConfiguration.domainVersionId, false)
+      botFlowConfiguration.language = normalizeLanguage(defaultNluDomainVersion.language)
+      botFlowConfiguration.supportedLanguages = supportedLanguages(defaultNluDomainVersion)
+      debug(`Bot flow '${botFlowConfiguration.name}' supports languages '${botFlowConfiguration.supportedLanguages.join(', ')}'`)
+    }
+
+    botFlowsConfiguration.push(botFlowConfiguration)
   }
+
+  if (requestedLanguage && !botFlowsConfiguration.some(botFlowConf => supportsLanguage(botFlowConf, requestedLanguage))) {
+    const languagesByBotFlow = botFlowsConfiguration
+      .map(botFlowConf => `'${botFlowConf.name}' supports '${(botFlowConf.supportedLanguages || []).join(', ')}'`)
+      .join(', ')
+    throw new Error(`No bot flow found for language '${requestedLanguage}' in inbound flow '${inboundFlowName}': ${languagesByBotFlow}`)
+  }
+
   return botFlowsConfiguration
 }
 
-const detectIntentInDomain = async (botFlowConf, apiEndPoint, accessToken, messageText, mostConfidentIntentSoFar) => {
+const detectIntentInDomain = async (botFlowConf, apiEndPoint, accessToken, messageText, mostConfidentIntentSoFar, language) => {
+  const input = { text: messageText }
+  const requestedLanguage = normalizeLanguage(language)
+  if (requestedLanguage) {
+    input.language = requestedLanguage
+  }
   const reqOptionDetectIntentConfig = {
     method: 'post',
     url: `${apiEndPoint}/api/v2/languageunderstanding/domains/${botFlowConf.domainId}/versions/${botFlowConf.domainVersionId}/detect`,
@@ -386,7 +516,7 @@ const detectIntentInDomain = async (botFlowConf, apiEndPoint, accessToken, messa
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ input: { text: messageText } })
+    body: JSON.stringify({ input })
   }
   debug(`Request for detect intent: ${JSON.stringify(reqOptionDetectIntentConfig, null, 2)}`)
   const responseDetectIntent = await fetchWithCustomError(reqOptionDetectIntentConfig, 'Request for detect intent failed')
@@ -438,11 +568,12 @@ const searchInKnowledge = async (botFlowConf, apiEndPoint, accessToken, messageT
 }
 
 const detectNlpData = async (params) => {
-  const { botFlowsConfiguration, apiEndPoint, accessToken, messageText, messageId, botFlowNameField } = params
+  const { botFlowsConfiguration, apiEndPoint, accessToken, messageText, messageId, botFlowNameField, language } = params
   debug(`Detecting NLP data with params: ${JSON.stringify(params, null, 2)}`)
   if (!_.isArray(botFlowsConfiguration) || botFlowsConfiguration.length === 0) {
     throw new Error('No bot flow configuration available for NLP detection')
   }
+  const requestedLanguage = normalizeLanguage(language)
 
   let botFlowName
   if (messageId && botFlowNameField) {
@@ -479,11 +610,18 @@ const detectNlpData = async (params) => {
 
   let intents = []
   const detectNlpDataByFlow = async (botFlowConf) => {
-    if (botFlowConf.knowledgeBaseId && messageText && messageText.length >= 3) {
+    // the Genesys knowledge API cannot be queried by language, so it only serves the default language of the bot flow
+    const knowledgeLanguageMismatch = requestedLanguage && botFlowConf.language && requestedLanguage !== botFlowConf.language
+    const knowledgeBaseId = knowledgeLanguageMismatch ? null : botFlowConf.knowledgeBaseId
+    if (knowledgeLanguageMismatch && botFlowConf.knowledgeBaseId) {
+      debug(`Skipping knowledge search for bot flow '${botFlowConf.name}' because its knowledge base holds '${botFlowConf.language}' content and language '${requestedLanguage}' was requested`)
+    }
+
+    if (knowledgeBaseId && messageText && messageText.length >= 3) {
       const responseBias = botFlowConf.responseBias
-      debug(`Detecting NLP data in bot flow '${botFlowConf.name}' with response bias '${responseBias}' and knowledge base '${botFlowConf.knowledgeBaseId}'`)
+      debug(`Detecting NLP data in bot flow '${botFlowConf.name}' with response bias '${responseBias}' and knowledge base '${knowledgeBaseId}'`)
       if (responseBias === 'intents') {
-        const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
+        const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0], requestedLanguage)
         if (detectedIntents.length > 0) {
           intents = detectedIntents
         }
@@ -497,18 +635,18 @@ const detectNlpData = async (params) => {
         if (foundIntents.length > 0) {
           intents = foundIntents
         }
-        const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
+        const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0], requestedLanguage)
         if (detectedIntents.length > 0) {
           intents = detectedIntents
         }
       }
     } else {
-      if (botFlowConf.knowledgeBaseId && (!messageText || messageText.length < 3)) {
+      if (knowledgeBaseId && (!messageText || messageText.length < 3)) {
         debug(`Skipping knowledge search for bot flow '${botFlowConf.name}' because message text is shorter than 3 characters`)
       } else if (!botFlowConf.knowledgeBaseId) {
         debug(`No knowledge base configured for bot flow '${botFlowConf.name}', using intent detection only`)
       }
-      const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0])
+      const detectedIntents = await detectIntentInDomain(botFlowConf, apiEndPoint, accessToken, messageText, intents[0], requestedLanguage)
       if (detectedIntents.length > 0) {
         intents = detectedIntents
       }
@@ -517,8 +655,12 @@ const detectNlpData = async (params) => {
 
   const matchingBotFlowConfiguration = botFlowName && _.find(botFlowsConfiguration, bfConfig => bfConfig.name === botFlowName)
   if (matchingBotFlowConfiguration) {
-    debug(`Detecting NLP data using bot flow '${botFlowName}'`)
-    await detectNlpDataByFlow(matchingBotFlowConfiguration)
+    if (supportsLanguage(matchingBotFlowConfiguration, requestedLanguage)) {
+      debug(`Detecting NLP data using bot flow '${botFlowName}'`)
+      await detectNlpDataByFlow(matchingBotFlowConfiguration)
+    } else {
+      debug(`Skipping bot flow '${botFlowName}' because it does not support language '${requestedLanguage}', supported languages are '${(matchingBotFlowConfiguration.supportedLanguages || []).join(', ')}'`)
+    }
   } else {
     if (botFlowName) {
       debug(`Bot flow '${botFlowName}' from conversation attribute '${botFlowNameField}' was not found in configured bot flows: ${botFlowsConfiguration.map(bfConfig => bfConfig.name).join(', ')}`)
@@ -526,6 +668,11 @@ const detectNlpData = async (params) => {
       debug(`Detecting NLP data using all configured bot flows: ${botFlowsConfiguration.map(bfConfig => bfConfig.name).join(', ')}`)
     }
     for (const botFlowConf of botFlowsConfiguration) {
+      // an NLU domain without the requested language would answer in another language and could outrank the correct match
+      if (!supportsLanguage(botFlowConf, requestedLanguage)) {
+        debug(`Skipping bot flow '${botFlowConf.name}' because it does not support language '${requestedLanguage}', supported languages are '${(botFlowConf.supportedLanguages || []).join(', ')}'`)
+        continue
+      }
       await detectNlpDataByFlow(botFlowConf)
     }
   }
@@ -613,11 +760,14 @@ module.exports = {
       type: 'string'
     },
     language: {
-      describe: 'Language (like en-us)',
+      describe: 'Language (like en-us), defaults to the GENESYS_LANGUAGE capability or the default language of the bot flow',
       type: 'string'
     }
   },
   getBotFlowsConfiguration,
   detectNlpData,
-  getBotFlows
+  getBotFlows,
+  normalizeLanguage,
+  supportedLanguages,
+  resolveNluDomainVersionId
 }

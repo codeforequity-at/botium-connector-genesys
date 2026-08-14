@@ -1,6 +1,38 @@
-const { UrlsByRegion } = require('./constants')
+const { UrlsByRegion, Capabilities, DEFAULT_LANGUAGE_ATTRIBUTE_NAME } = require('./constants')
 const _ = require('lodash')
 const debug = require('debug')('botium-connector-genesys')
+
+/**
+ * Genesys maps custom attributes to participant data. Publishing the language there lets an Architect
+ * flow pick it up with a Get Participant Data action and switch the conversation language with a
+ * Set Language action, so a single capability drives both NLU detection and the conversation itself.
+ *
+ * @param caps
+ * @returns {object|null} the custom attributes to send, or null when there are none
+ */
+const getCustomAttributes = (caps) => {
+  const configuredAttributes = caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]
+  const language = caps[Capabilities.GENESYS_LANGUAGE]
+  const attributeName = _.isNil(caps[Capabilities.GENESYS_LANGUAGE_ATTRIBUTE_NAME])
+    ? DEFAULT_LANGUAGE_ATTRIBUTE_NAME
+    : caps[Capabilities.GENESYS_LANGUAGE_ATTRIBUTE_NAME]
+
+  if (!language || !attributeName) {
+    return configuredAttributes || null
+  }
+  if (configuredAttributes && !_.isPlainObject(configuredAttributes)) {
+    debug(`GENESYS_CUSTOM_ATTRIBUTES is not an object, sending it unchanged without the '${attributeName}' attribute`)
+    return configuredAttributes
+  }
+
+  const customAttributes = Object.assign({}, configuredAttributes)
+  if (_.isNil(customAttributes[attributeName])) {
+    customAttributes[attributeName] = language
+  } else if (customAttributes[attributeName] !== language) {
+    debug(`Custom attribute '${attributeName}' is set to '${customAttributes[attributeName]}' and takes precedence over GENESYS_LANGUAGE '${language}'`)
+  }
+  return customAttributes
+}
 
 const getAccessToken = async (awsRegion, clientId, clientSecret) => {
   try {
@@ -36,5 +68,6 @@ const getAccessToken = async (awsRegion, clientId, clientSecret) => {
 }
 
 module.exports = {
-  getAccessToken
+  getAccessToken,
+  getCustomAttributes
 }

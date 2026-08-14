@@ -210,7 +210,7 @@ Minimum permissions for intent detection without a Genesys Knowledge Base:
 | `GET /api/v2/flows/{flowId}/latestconfiguration` | `architect:flow:view` | `architect:readonly` |
 | `POST /api/v2/languageunderstanding/domains/{domainId}/versions/{domainVersionId}/detect` | one of `languageUnderstanding:nluDomainVersion:view` or `dialog:botVersion:view` | one of `language-understanding:readonly` or `dialog:readonly` |
 
-The intent import handler additionally reads the NLU domain version, so it uses the same NLU permission and scope for:
+The intent import handler, and intent detection with `GENESYS_LANGUAGE` set, additionally read the NLU domain version, so they use the same NLU permission and scope for:
 
 | Endpoint used by the connector | Required permission | OAuth scope |
 | --- | --- | --- |
@@ -234,6 +234,58 @@ You can verify the current permission and scope requirements in the [Genesys Clo
 
 #### GENESYS_INBOUND_MESSAGE_FLOW_NAME
 When you turn on `GENESYS_NLP_ANALYTICS`, then it's required to specify the inbound message flow name.
+
+#### GENESYS_LANGUAGE
+The language used for intent detection and for the conversation model downloader, in `en-us` format. 
+When it is not set, the default language of the bot flow is used.
+
+Only set this for a multilanguage bot flow, see [Multilanguage bot flows](#multilanguage-bot-flows).
+
+#### GENESYS_LANGUAGE_ATTRIBUTE_NAME
+The custom attribute `GENESYS_LANGUAGE` is sent in, `language` by default. Set it to an empty string 
+to not send the language at all.
+
+Genesys maps custom attributes to participant data, so an Architect flow can read this attribute and 
+switch the language of the conversation. See [Multilanguage bot flows](#multilanguage-bot-flows).
+
+### Multilanguage bot flows
+
+A Genesys bot flow has one default language, chosen when the bot flow is created, and optionally 
+further supported languages. Intent names are shared between all languages, only the training 
+utterances are localized. In the API this is one NLU domain with a separate NLU domain version per 
+language.
+
+Set `GENESYS_LANGUAGE` to the language you want to test, for example `es-es`. The connector then
+
+* detects intents in the NLU domain version of that language, instead of the default one
+* downloads the utterances of that language in the conversation model downloader
+* sends the language as custom attribute, see below
+
+Use one Botium chatbot, or at least one test set, per language. Since intent names are shared between 
+languages while the utterances are not, a test set mixing languages sends utterances to the model of 
+another language, which fails by design.
+
+#### Switching the language of the conversation
+
+`GENESYS_LANGUAGE` selects the language Botium analyses the conversation in. It does not switch the 
+language the bot answers in, because Genesys has no API for that. To get answers in the requested 
+language, the Architect flow has to read the custom attribute the connector sends and switch the 
+language itself:
+
+* Add a `Get Participant Data` action which reads the `language` attribute into a flow variable
+* Add a `Set Language` action which uses that variable as expression
+* Add the language under `Supported Languages` of every bot flow involved, with trained utterances
+
+Without these steps the bot keeps answering in its default language, while Botium still reports the 
+intents of the requested language. In that case the NLP analytics of a web messaging or open 
+messaging test do not match what the bot actually did. `NLP_ONLY` mode is not affected, it only uses 
+the NLU API.
+
+#### Knowledge base limitation
+
+The Genesys knowledge API cannot be queried by language. When `GENESYS_LANGUAGE` differs from the 
+default language of the bot flow, the connector therefore skips the knowledge base of that bot flow, 
+both for intent detection and for the conversation model downloader, and only uses the NLU domain.
 
 ### WEB MESSAGING
 
@@ -273,3 +325,6 @@ E.g.:
     "device": "mobile"
 }
 ```
+
+When `GENESYS_LANGUAGE` is set, the connector adds it to these attributes under the name configured 
+in `GENESYS_LANGUAGE_ATTRIBUTE_NAME`. An attribute defined here explicitly is never overwritten.
