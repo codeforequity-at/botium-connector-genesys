@@ -5,7 +5,7 @@ const debug = require('debug')('botium-connector-genesys-open-messaging')
 const SimpleRestContainer = require('botium-core/src/containers/plugins/SimpleRestContainer')
 const { Capabilities: CoreCapabilities } = require('botium-core')
 const { Capabilities, UrlsByRegion } = require('./constants')
-const { getAccessToken } = require('./util')
+const { getAccessToken, getCustomAttributes } = require('./util')
 const { getBotFlowsConfiguration, detectNlpData } = require('./intents')
 
 const Validate = async (connector) => {
@@ -37,7 +37,12 @@ const Validate = async (connector) => {
         connector.from = connector.caps[Capabilities.GENESYS_USER_DATA] || { id: botium.conversationId }
         botium.userId = connector.from.id
         if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
-          connector.botFlowsConfiguration = await getBotFlowsConfiguration(connector.caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME], connector.apiEndpoint, botium.accessToken)
+          connector.botFlowsConfiguration = await getBotFlowsConfiguration({
+            inboundFlowName: connector.caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME],
+            apiEndPoint: connector.apiEndpoint,
+            accessToken: botium.accessToken,
+            language: connector.caps[Capabilities.GENESYS_LANGUAGE]
+          })
         }
       },
       [CoreCapabilities.SIMPLEREST_REQUEST_HOOK]: async ({ requestOptions, msg, context, botium }) => {
@@ -63,9 +68,10 @@ const Validate = async (connector) => {
           direction: 'Inbound'
         }
 
-        if (connector.caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]) {
+        const customAttributes = getCustomAttributes(connector.caps)
+        if (customAttributes) {
           body.channel.metadata = {
-            customAttributes: connector.caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]
+            customAttributes
           }
         }
 
@@ -94,7 +100,8 @@ const Validate = async (connector) => {
               accessToken: botium.accessToken,
               messageText: connector.currentMessageText,
               messageId: _.get(botMsg, 'sourceData.channel.messageId'),
-              botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME]
+              botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME],
+              language: connector.caps[Capabilities.GENESYS_LANGUAGE]
             })
             connector.currentMessageText = undefined
           }

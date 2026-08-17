@@ -1,0 +1,354 @@
+{
+    "id": "163d18b8-d4f2-4f02-9594-34f7c0004459",
+    "domain": {
+        "id": "21b5c82b-2437-46e4-a546-1d885ad5a63c",
+        "selfUri": "/api/v2/languageunderstanding/domains/21b5c82b-2437-46e4-a546-1d885ad5a63c"
+    },
+    "description": "Created from a bot flow template",
+    "language": "en-us",
+    "published": true,
+    "dateCreated": "2026-08-12T11:21:40.292652Z",
+    "dateModified": "2026-08-12T11:21:45.586905Z",
+    "dateTrained": "2026-08-12T11:21:42.125309Z",
+    "datePublished": "2026-08-12T11:21:45.567929Z",
+    "trainingStatus": "Trained",
+    "evaluationStatus": "Evaluated",
+    "intents": [
+        {
+            "id": "e22daf48-3172-4d9f-9432-972bc541b72a",
+            "name": "Age Requirement",
+            "entityNameReferences": [],
+            "utterances": [
+                {
+                    "id": "035acc84-0a85-4150-94d4-9c46b7648fa0",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Which bank location should I visit?"
+                        }
+                    ]
+                },
+                {
+                    "id": "5a77c761-ee6b-4fcb-8a5f-71ec2b8c026b",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "What bank location is most appropriate for me to go to?"
+                        }
+                    ]
+                },
+                {
+                    "id": "c8e7d224-4200-4428-8e55-6142498d984c",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Could you direct me to the branch I should visit?"
+                        }
+                    ]
+                },
+                {
+                    "id": "fac1befe-4342-47d4-8f28-5b66103afa77",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Am I old enough to have an account"
+                        }
+                    ]
+                },
+                {
+                    "id": "702d29fb-72ad-4c44-930d-8d3bd561eb10",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "What are the age requirements"
+                        }
+                    ]
+                },
+                {
+                    "id": "6bb94019-0e84-4ba4-8a0b-2c2c5066a7a3",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Age requirement for an account"
+                        }
+                    ]
+                },
+                {
+                    "id": "e5adcd89-71b3-4564-ba9f-a0f9c5f299a9",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Am I old enough"
+                        }
+                    ]
+                },
+                {
+                    "id": "3f39d54b-4e8c-4414-b21e-dff1ece293df",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "How old do you have to be to open an account"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "feaef001-4ad0-487a-b502-bc873da61b0d",
+            "name": "Check Account Balance",
+            "entityNameReferences": [
+                "AccountNumber"
+            ],
+            "utterances": [
+                {
+                    "id": "ec1015bd-4953-492b-a6cc-3bcc3139a869",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Can you provide me with the age threshold necessary?"
+                        }
+                    ]
+                },
+                {
+                    "id": "67c85f49-adc9-4136-bdd5-0599822f0958",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "My account number is "
+                        },
+                        {
+                            "text": "87654321",
+                            "entity": {
+                                "name": "AccountNumber"
+                            }
+                        },
+                        {
+                            "text": ", what's the balance?"
+                        }
+                    ]
+                },
+                {
+                    "id": "7beb8fd8-70bb-4fd4-91b6-225651016b6b",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Tell me what the balance of my account is"
+                        }
+                    ]
+                },
+                {
+                    "id": "d35c13ef-4920-420f-ac32-73566ca4c0e8",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Check account balance"
+                        }
+                    ]
+                },
+                {
+                    "id": "4fdaf4e4-a3f4-41cb-98fa-1b7d76b80ea5",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Balance enquiry"
+                        }
+                    ]
+                },
+                {
+                    "id": "48d51d99-2019-4043-b6bf-4bbf76711d29",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "What's the balance on account "
+                        },
+                        {
+                            "text": "12345678",
+                            "entity": {
+                                "name": "AccountNumber"
+                            }
+                        },
+                        {
+                            "text": "?"
+                        }
+                    ]
+                },
+                {
+                    "id": "17bd6eeb-d4db-4c36-920b-a136b8a050f8",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "I want to check my account balance"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "c2201958-38c6-44dd-865a-43623affd8b7",
+            "name": "Claims",
+            "entityNameReferences": [],
+            "utterances": [
+                {
+                    "id": "9833bdff-0efd-47fa-9441-12d8f7543038",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "could you help with a claim"
+                        }
+                    ]
+                },
+                {
+                    "id": "51f3b5f2-ab57-412a-b40f-95a021e989a9",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Calling about a claim"
+                        }
+                    ]
+                },
+                {
+                    "id": "307df6d2-81a1-4129-b541-99618c7b7181",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Add claim"
+                        }
+                    ]
+                },
+                {
+                    "id": "237ace76-933e-45f1-b8f5-d98e0eb90ea0",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Can I enter a claim"
+                        }
+                    ]
+                },
+                {
+                    "id": "4c05b2d2-c0e3-4514-a66d-846ec58f7512",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "I need to make a claim"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "7de18864-d47f-43aa-ab9c-c57f6ca00db5",
+            "name": "Find a Branch",
+            "entityNameReferences": [
+                "ZipCode"
+            ],
+            "utterances": [
+                {
+                    "id": "ace755f7-1a06-418e-b5b1-9601c79d07aa",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Which branch should I go to"
+                        }
+                    ]
+                },
+                {
+                    "id": "569d92fa-b956-4061-b912-cb5a873066dd",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Where is my branch"
+                        }
+                    ]
+                },
+                {
+                    "id": "e5086193-25bc-4ff7-94f6-1fe267a1324b",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "I want to find my local branch please"
+                        }
+                    ]
+                },
+                {
+                    "id": "134580fd-ed6a-48fe-8876-d1acb6ac785e",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "What's the closest branch to "
+                        },
+                        {
+                            "text": "90210",
+                            "entity": {
+                                "name": "ZipCode"
+                            }
+                        },
+                        {
+                            "text": "?"
+                        }
+                    ]
+                },
+                {
+                    "id": "ba8346bd-9402-4dd3-a224-345b79ff3987",
+                    "source": "User",
+                    "segments": [
+                        {
+                            "text": "Where's my nearest branch?"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "entityTypes": [
+        {
+            "name": "AccountNumberType",
+            "description": "The description of the Entity Type \"AccountNumberType\"",
+            "mechanism": {
+                "items": [
+                    {
+                        "value": "\\b[0-9]{8}\\b",
+                        "synonyms": []
+                    }
+                ],
+                "restricted": true,
+                "type": "Regex"
+            }
+        },
+        {
+            "name": "ZipCodeType",
+            "description": "The description of the Entity Type \"ZipCodeType\"",
+            "mechanism": {
+                "items": [
+                    {
+                        "value": "\\b[0-9]{5}\\b",
+                        "synonyms": []
+                    }
+                ],
+                "restricted": true,
+                "type": "Regex"
+            }
+        }
+    ],
+    "entities": [
+        {
+            "name": "AccountNumber",
+            "type": "AccountNumberType"
+        },
+        {
+            "name": "ClaimType",
+            "type": "builtin:any"
+        },
+        {
+            "name": "DateofBirth",
+            "type": "builtin:date"
+        },
+        {
+            "name": "ZipCode",
+            "type": "ZipCodeType"
+        }
+    ],
+    "languageVersions": {
+        "es-es": "3bef5f5a-6691-40e8-9b02-6371d62bcd66"
+    },
+    "selfUri": "/api/v2/languageunderstanding/domains/21b5c82b-2437-46e4-a546-1d885ad5a63c/versions/163d18b8-d4f2-4f02-9594-34f7c0004459"
+}

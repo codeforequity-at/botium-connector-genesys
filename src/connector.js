@@ -3,6 +3,8 @@ const { Capabilities } = require('./constants')
 const openMessaging = require('./openMessagingChannel')
 const webMessaging = require('./webMessagingChannel')
 const nlpOnly = require('./nlpOnly')
+const { normalizeLanguage } = require('./intents')
+const LANGUAGE_REGEXP = /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/
 const MessagingChannelTypes = {
   OPEN_MESSAGING: 'OPEN_MESSAGING',
   WEB_MESSAGING: 'WEB_MESSAGING',
@@ -23,6 +25,11 @@ class BotiumConnectorGenesys {
     this.caps = Object.assign({}, this.caps)
 
     if (!this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL]) throw new Error('GENESYS_MESSAGING_CHANNEL capability required')
+
+    const language = this.caps[Capabilities.GENESYS_LANGUAGE]
+    if (language && !LANGUAGE_REGEXP.test(normalizeLanguage(language))) {
+      debug(`GENESYS_LANGUAGE '${language}' does not look like a Genesys language, expected something like 'en-us'`)
+    }
 
     if (this.caps[Capabilities.GENESYS_MESSAGING_CHANNEL] === MessagingChannelTypes.OPEN_MESSAGING) {
       return openMessaging.Validate(this)

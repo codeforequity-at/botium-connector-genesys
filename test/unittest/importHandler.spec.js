@@ -5,6 +5,15 @@ const { importHandler, detectNlpData, getBotFlows, getBotFlowsConfiguration } = 
 const { UrlsByRegion, Capabilities } = require('../../src/constants')
 const _ = require('lodash')
 const { getAccessToken } = require('../../src/util')
+
+const multilingualBotFlowConfiguration = {
+  id: 'botFlow01',
+  name: 'Multilingual Bot Flow',
+  domainId: 'domain01',
+  domainVersionId: 'version01',
+  language: 'en-us',
+  supportedLanguages: ['en-us', 'es-es']
+}
 const caps = {
   GENESYS_AWS_REGION: 'us-east-1',
   GENESYS_CLIENT_ID: '5305cdc8-5ef9-49b9-8cbe-95e87bd3c42d',
@@ -13,7 +22,7 @@ const caps = {
   GENESYS_INBOUND_FLOW_TYPE: 'INBOUNDSHORTMESSAGE'
 }
 
-const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = true, botFlow = true, nluDomain = true, emptyBotFlows = false }) => {
+const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = true, botFlow = true, nluDomain = true, emptyBotFlows = false, languageVersions = null }) => {
   const authEndpoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.auth`)
   const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
 
@@ -139,10 +148,42 @@ const mockGenesysApi = ({ auth = true, flowList = true, inboundMessageFlow = tru
     nluDomainStatus = 400
     nluDomainData = {}
   }
+  if (languageVersions) {
+    nluDomainData.languageVersions = languageVersions
+  }
   nock(apiEndPoint)
     .get(`/api/v2/languageunderstanding/domains/${nluDomainId}/versions/${nluDomainVersionId}?includeUtterances=true`)
     .reply(nluDomainStatus, nluDomainData)
     .persist()
+
+  // metadata request done by getBotFlowsConfiguration, utterances are not needed there
+  nock(apiEndPoint)
+    .get(`/api/v2/languageunderstanding/domains/${nluDomainId}/versions/${nluDomainVersionId}`)
+    .reply(nluDomainStatus, _.omit(nluDomainData, 'intents'))
+    .persist()
+
+  for (const [language, languageVersionId] of Object.entries(languageVersions || {})) {
+    nock(apiEndPoint)
+      .get(`/api/v2/languageunderstanding/domains/${nluDomainId}/versions/${languageVersionId}?includeUtterances=true`)
+      .reply(200, {
+        language,
+        intents: [
+          {
+            name: intentName,
+            utterances: [
+              {
+                segments: [
+                  {
+                    text: `Tell me a joke in ${language}`
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      })
+      .persist()
+  }
 }
 
 const mockFlowList = ({ apiEndPoint, flowName, flowType, flowId }) => {
@@ -431,7 +472,12 @@ describe('importhandler', function () {
     const accessToken = await getAccessToken(caps[Capabilities.GENESYS_AWS_REGION], caps[Capabilities.GENESYS_CLIENT_ID], caps[Capabilities.GENESYS_CLIENT_SECRET])
     assert.equal(accessToken, 'AccessToken123')
     try {
-      await getBotFlowsConfiguration(caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME, _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`), accessToken, caps.GENESYS_INBOUND_FLOW_TYPE)
+      await getBotFlowsConfiguration({
+        inboundFlowName: caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME,
+        apiEndPoint: _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`),
+        accessToken,
+        inboundFlowType: caps.GENESYS_INBOUND_FLOW_TYPE
+      })
       assert.fail('it should have failed')
     } catch (err) {
       assert.equal(err.message, `No bot flows found in inbound flow '${caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME}' and type '${caps.GENESYS_INBOUND_FLOW_TYPE}'`)
@@ -450,5 +496,187 @@ describe('importhandler', function () {
     } catch (err) {
       assert.equal(err.message, 'No bot flow configuration available for NLP detection')
     }
+  })
+
+  it('should download intents of the requested language', async function () {
+    mockGenesysApi({ languageVersions: { 'es-es': 'nluDomainVersionId02' } })
+
+    const result = await importHandler({ caps, language: 'es-es' })
+    assert.equal(result.utterances.length, 1)
+    assert.deepEqual(result.utterances[0].utterances, ['Tell me a joke in es-es'])
+  })
+
+  it('should normalize the requested language', async function () {
+    mockGenesysApi({ languageVersions: { 'es-es': 'nluDomainVersionId02' } })
+
+    const result = await importHandler({ caps, language: 'es_ES' })
+    assert.deepEqual(result.utterances[0].utterances, ['Tell me a joke in es-es'])
+  })
+
+  it('should download intents of the default language when the requested language is the default one', async function () {
+    mockGenesysApi({ languageVersions: { 'es-es': 'nluDomainVersionId02' } })
+
+    const result = await importHandler({ caps, language: 'en-us' })
+    assert.isTrue(result.utterances[0].utterances.includes('Tell me a joke'))
+  })
+
+  it('should download intents of the language from the GENESYS_LANGUAGE capability', async function () {
+    mockGenesysApi({ languageVersions: { 'es-es': 'nluDomainVersionId02' } })
+
+    const result = await importHandler({ caps: Object.assign({}, caps, { GENESYS_LANGUAGE: 'es-es' }) })
+    assert.deepEqual(result.utterances[0].utterances, ['Tell me a joke in es-es'])
+  })
+
+  it('should fail downloading intents of a language the nlu domain does not have', async function () {
+    mockGenesysApi({ languageVersions: { 'es-es': 'nluDomainVersionId02' } })
+
+    try {
+      await importHandler({ caps, language: 'de-de' })
+      assert.fail('it should have failed')
+    } catch (err) {
+      assert.equal(err.message, "Import failed: No NLU domain found for language 'de-de', available languages are 'en-us, es-es'")
+    }
+  })
+
+  it('should collect the supported languages of the bot flows', async function () {
+    mockGenesysApi({ languageVersions: { 'es-es': 'nluDomainVersionId02' } })
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+
+    const result = await getBotFlowsConfiguration({
+      inboundFlowName: caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME,
+      apiEndPoint,
+      accessToken: 'AccessToken123',
+      inboundFlowType: caps.GENESYS_INBOUND_FLOW_TYPE,
+      language: 'es-es'
+    })
+    assert.equal(result.length, 1)
+    assert.equal(result[0].language, 'en-us')
+    assert.deepEqual(result[0].supportedLanguages, ['en-us', 'es-es'])
+  })
+
+  it('should not request the nlu domain metadata when no language is configured', async function () {
+    mockGenesysApi({})
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+
+    const result = await getBotFlowsConfiguration({
+      inboundFlowName: caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME,
+      apiEndPoint,
+      accessToken: 'AccessToken123',
+      inboundFlowType: caps.GENESYS_INBOUND_FLOW_TYPE
+    })
+    assert.isUndefined(result[0].supportedLanguages)
+  })
+
+  it('should fail when no bot flow supports the requested language', async function () {
+    mockGenesysApi({})
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+
+    try {
+      await getBotFlowsConfiguration({
+        inboundFlowName: caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME,
+        apiEndPoint,
+        accessToken: 'AccessToken123',
+        inboundFlowType: caps.GENESYS_INBOUND_FLOW_TYPE,
+        language: 'es-es'
+      })
+      assert.fail('it should have failed')
+    } catch (err) {
+      assert.equal(err.message, `No bot flow found for language 'es-es' in inbound flow '${caps.GENESYS_INBOUND_MESSAGE_FLOW_NAME}': 'digitalBotFlow01' supports 'en-us'`)
+    }
+  })
+
+  it('should send the requested language to the detect endpoint', async function () {
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+    let detectBody
+    nock(apiEndPoint)
+      .post('/api/v2/languageunderstanding/domains/domain01/versions/version01/detect', body => {
+        detectBody = body
+        return true
+      })
+      .reply(200, { output: { intents: [{ name: 'Check Account Balance', probability: 0.98 }] } })
+
+    const nlp = await detectNlpData({
+      botFlowsConfiguration: [multilingualBotFlowConfiguration],
+      apiEndPoint,
+      accessToken: 'AccessToken123',
+      messageText: 'Quiero consultar el saldo de mi cuenta',
+      language: 'es-ES'
+    })
+
+    assert.deepEqual(detectBody, { input: { text: 'Quiero consultar el saldo de mi cuenta', language: 'es-es' } })
+    assert.equal(nlp.intent.name, 'Check Account Balance')
+    assert.equal(nlp.intent.confidence, 0.98)
+  })
+
+  it('should not send a language to the detect endpoint when none is configured', async function () {
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+    let detectBody
+    nock(apiEndPoint)
+      .post('/api/v2/languageunderstanding/domains/domain01/versions/version01/detect', body => {
+        detectBody = body
+        return true
+      })
+      .reply(200, { output: { intents: [{ name: 'Check Account Balance', probability: 0.98 }] } })
+
+    await detectNlpData({
+      botFlowsConfiguration: [multilingualBotFlowConfiguration],
+      apiEndPoint,
+      accessToken: 'AccessToken123',
+      messageText: 'I want to check my account balance'
+    })
+
+    assert.deepEqual(detectBody, { input: { text: 'I want to check my account balance' } })
+  })
+
+  it('should skip bot flows which do not support the requested language', async function () {
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+    // only the multilingual bot flow may be detected in, the english one would answer in the wrong language
+    nock(apiEndPoint)
+      .post('/api/v2/languageunderstanding/domains/domain01/versions/version01/detect')
+      .reply(200, { output: { intents: [{ name: 'Check Account Balance', probability: 0.98 }] } })
+
+    const nlp = await detectNlpData({
+      botFlowsConfiguration: [
+        multilingualBotFlowConfiguration,
+        {
+          id: 'botFlow02',
+          name: 'English Bot Flow',
+          domainId: 'domain02',
+          domainVersionId: 'version02',
+          language: 'en-us',
+          supportedLanguages: ['en-us']
+        }
+      ],
+      apiEndPoint,
+      accessToken: 'AccessToken123',
+      messageText: 'Quiero consultar el saldo de mi cuenta',
+      language: 'es-es'
+    })
+
+    assert.equal(nlp.intent.name, 'Check Account Balance')
+    assert.isTrue(nock.isDone())
+  })
+
+  it('should skip the knowledge base when another language than the default one is requested', async function () {
+    const apiEndPoint = _.get(UrlsByRegion, `${caps[Capabilities.GENESYS_AWS_REGION]}.api`)
+    // the genesys knowledge api cannot be queried by language, so it must not be searched at all
+    nock(apiEndPoint)
+      .post('/api/v2/languageunderstanding/domains/domain01/versions/version01/detect')
+      .reply(200, { output: { intents: [{ name: 'Check Account Balance', probability: 0.98 }] } })
+
+    const nlp = await detectNlpData({
+      botFlowsConfiguration: [Object.assign({}, multilingualBotFlowConfiguration, {
+        knowledgeBaseId: 'knowledgeBase01',
+        maxNumOfAnswersReturned: '3',
+        responseBias: 'neutral'
+      })],
+      apiEndPoint,
+      accessToken: 'AccessToken123',
+      messageText: 'Quiero consultar el saldo de mi cuenta',
+      language: 'es-es'
+    })
+
+    assert.equal(nlp.intent.name, 'Check Account Balance')
+    assert.isTrue(nock.isDone())
   })
 })

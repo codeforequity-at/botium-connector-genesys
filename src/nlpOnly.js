@@ -38,12 +38,13 @@ const Start = async (connector) => {
   }
 
   connector.view.botium.accessToken = await getAccessToken(connector.caps[Capabilities.GENESYS_AWS_REGION], connector.caps[Capabilities.GENESYS_CLIENT_ID], connector.caps[Capabilities.GENESYS_CLIENT_SECRET])
-  connector.botFlowsConfiguration = await getBotFlowsConfiguration(
-    inboundFlowNameForCaps(connector.caps),
-    connector.apiEndpoint,
-    connector.view.botium.accessToken,
-    connector.caps[Capabilities.GENESYS_INBOUND_FLOW_TYPE]
-  )
+  connector.botFlowsConfiguration = await getBotFlowsConfiguration({
+    inboundFlowName: inboundFlowNameForCaps(connector.caps),
+    apiEndPoint: connector.apiEndpoint,
+    accessToken: connector.view.botium.accessToken,
+    inboundFlowType: connector.caps[Capabilities.GENESYS_INBOUND_FLOW_TYPE],
+    language: connector.caps[Capabilities.GENESYS_LANGUAGE]
+  })
 }
 
 const UserSays = async (connector, msg) => {
@@ -63,7 +64,8 @@ const UserSays = async (connector, msg) => {
     apiEndPoint: connector.apiEndpoint,
     accessToken: connector.view.botium.accessToken,
     messageText: msg.messageText,
-    botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME]
+    botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME],
+    language: connector.caps[Capabilities.GENESYS_LANGUAGE]
   })
   setTimeout(() => connector.queueBotSays(botMsg), 0)
 }

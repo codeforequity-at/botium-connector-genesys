@@ -103,6 +103,20 @@ module.exports = {
         required: false
       },
       {
+        name: 'GENESYS_LANGUAGE',
+        label: 'Language',
+        description: 'Language of the NLU domain version used for intent detection and intent download, like en-us or es-es. Defaults to the default language of the bot flow.',
+        type: 'string',
+        required: false
+      },
+      {
+        name: 'GENESYS_LANGUAGE_ATTRIBUTE_NAME',
+        label: 'Language Custom Attribute Name',
+        description: 'Custom attribute the language is sent in, so an Architect flow reading it as participant data can switch the conversation language. Defaults to "language", leave blank to not send it. The attribute is sent with every message, falling back to "en-us" when no language is set.',
+        type: 'string',
+        required: false
+      },
+      {
         name: 'GENESYS_INBOUND_FLOW_TYPE',
         label: 'Inbound Flow Type',
         type: 'choice',

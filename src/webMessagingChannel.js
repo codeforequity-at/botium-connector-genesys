@@ -7,7 +7,7 @@ const Queue = require('better-queue')
 const debug = require('debug')('botium-connector-genesys-web-messaging')
 const { Capabilities, UrlsByRegion } = require('./constants')
 const { detectNlpData, getBotFlowsConfiguration } = require('./intents')
-const { getAccessToken } = require('./util')
+const { getAccessToken, getCustomAttributes } = require('./util')
 
 const Validate = async (connector) => {
   if (!connector.caps[Capabilities.GENESYS_DEPLOYMENT_ID]) throw new Error('GENESYS_DEPLOYMENT_ID capability required')
@@ -53,7 +53,12 @@ const Start = async (connector) => {
 
   if (!!connector.caps[Capabilities.GENESYS_NLP_ANALYTICS] === true) {
     connector.view.botium.accessToken = await getAccessToken(connector.caps[Capabilities.GENESYS_AWS_REGION], connector.caps[Capabilities.GENESYS_CLIENT_ID], connector.caps[Capabilities.GENESYS_CLIENT_SECRET])
-    connector.botFlowsConfiguration = await getBotFlowsConfiguration(connector.caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME], connector.apiEndpoint, connector.view.botium.accessToken)
+    connector.botFlowsConfiguration = await getBotFlowsConfiguration({
+      inboundFlowName: connector.caps[Capabilities.GENESYS_INBOUND_MESSAGE_FLOW_NAME],
+      apiEndPoint: connector.apiEndpoint,
+      accessToken: connector.view.botium.accessToken,
+      language: connector.caps[Capabilities.GENESYS_LANGUAGE]
+    })
     connector.view.botium.botMsgQueue = new Queue(async (input, cb) => {
       try {
         if (connector.currentMessageText) {
@@ -63,7 +68,8 @@ const Start = async (connector) => {
             accessToken: connector.view.botium.accessToken,
             messageText: connector.currentMessageText,
             messageId: _.get(input, 'sourceData.body.id'),
-            botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME]
+            botFlowNameField: connector.caps[Capabilities.GENESYS_BOT_FLOW_ATTRIBUTE_NAME],
+            language: connector.caps[Capabilities.GENESYS_LANGUAGE]
           })
           connector.currentMessageText = undefined
         }
@@ -257,10 +263,11 @@ const UserSays = async (connector, msg) => {
     }
   }
 
-  if (connector.caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]) {
+  const customAttributes = getCustomAttributes(connector.caps)
+  if (customAttributes) {
     messageData.message.channel = {
       metadata: {
-        customAttributes: connector.caps[Capabilities.GENESYS_CUSTOM_ATTRIBUTES]
+        customAttributes
       }
     }
   }
